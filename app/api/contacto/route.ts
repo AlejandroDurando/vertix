@@ -34,8 +34,10 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
   const sentAt = new Date().toISOString();
 
-  // Fire-and-forget: sheet + email + hubspot
-  appendContacto(data, sentAt).catch(() => null);
+  // Sheets primero (awaited — en serverless el fire-and-forget se cancela)
+  await appendContacto(data, sentAt).catch(() => null);
+
+  // Email y HubSpot en paralelo, no bloquean respuesta si fallan
   emailContacto(data).catch(() => null);
   upsertHubspotContact({
     email: data.email,

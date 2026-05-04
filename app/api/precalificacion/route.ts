@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
     ? { nombre: parsedBody.archivo.nombre, tipo: parsedBody.archivo.tipo, tamano: parsedBody.archivo.tamano }
     : undefined;
 
-  // Fire-and-forget: sheet + email + hubspot
-  appendPrecalificacion(data, sentAt).catch(() => null);
+  // Sheets awaited — en serverless el fire-and-forget se cancela
+  await appendPrecalificacion(data, sentAt).catch(() => null);
 
   emailPrecalificacion({
     ...data,
