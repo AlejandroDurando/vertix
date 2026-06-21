@@ -1,7 +1,6 @@
 import { google } from "googleapis";
 import { logger } from "./logger";
-import type { ContactoInput } from "./validations";
-import type { PrecalificacionInput } from "./validations";
+import type { AltaInput, ContactoInput, PrecalificacionInput } from "./validations";
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_CRM_ID ?? process.env.GOOGLE_SHEETS_ID ?? "";
 
@@ -65,39 +64,107 @@ export async function appendContacto(
 
 export async function appendPrecalificacion(
   data: PrecalificacionInput,
-  sentAt: string
+  sentAt: string,
+  meta?: { adjuntos?: string[]; bcra?: string }
 ): Promise<AppendResult> {
-  const base = [
-    sentAt,
-    data.servicio,
-    data.nombre,
-    data.email,
-    data.telefono,
-  ];
+  const adjuntos = (meta?.adjuntos ?? []).join(", ");
+  const bcra = meta?.bcra ?? "";
+  const base = [sentAt, data.servicio, data.nombre, data.email, data.telefono];
 
+  // Columnas: F..O según servicio (ver encabezados en la hoja).
   if (data.servicio === "cheques") {
     return appendRow("Precalificacion", [
       ...base,
-      data.empresa,
-      data.monto_cheque,
-      "",
-      data.fecha_vencimiento,
-      data.banco_emisor,
-      data.tipo_cheque,
-      "",
-      "",
+      data.empresa, // F
+      data.monto_cheque, // G
+      data.fecha_pago, // H
+      data.banco_emisor, // I
+      data.cuit_librador, // J
+      data.cuit_endosatario, // K
+      "", // L tipo_prestamo
+      "", // M tipo_ingreso
+      bcra, // N
+      adjuntos, // O
     ]);
   }
 
   return appendRow("Precalificacion", [
     ...base,
-    "",
-    data.monto_solicitado,
-    data.plazo_meses,
-    "",
-    "",
-    "",
-    data.tipo_persona,
-    data.tipo_ingreso,
+    data.tipo_persona, // F
+    data.monto_solicitado, // G
+    data.plazo_meses, // H
+    "", // I banco
+    data.cuit_solicitante, // J
+    "", // K
+    data.tipo_prestamo, // L
+    data.tipo_ingreso, // M
+    bcra, // N
+    adjuntos, // O
+  ]);
+}
+
+export async function appendAlta(
+  data: AltaInput,
+  sentAt: string,
+  adjuntos: string[]
+): Promise<AppendResult> {
+  const docs = adjuntos.join(", ");
+
+  if (data.tipo === "fisica") {
+    return appendRow("AltasPF", [
+      sentAt,
+      data.alyc,
+      data.nombre,
+      data.apellido,
+      data.cuit,
+      data.dni,
+      data.fecha_nacimiento,
+      data.estado_civil,
+      `${data.nacimiento_provincia} / ${data.nacimiento_localidad}`,
+      data.domicilio,
+      data.localidad,
+      data.provincia,
+      data.codigo_postal,
+      data.profesion,
+      data.es_autonomo,
+      data.cbu,
+      data.email,
+      data.email_alternativo,
+      data.telefono,
+      data.es_pep,
+      data.conyuge_nombre ?? "",
+      data.conyuge_dni ?? "",
+      docs,
+    ]);
+  }
+
+  return appendRow("AltasPJ", [
+    sentAt,
+    data.alyc,
+    data.razon_social,
+    data.cuit,
+    data.tipo_societario,
+    data.fecha_constitucion,
+    data.domicilio_legal,
+    data.localidad,
+    data.provincia,
+    data.codigo_postal,
+    data.actividad,
+    data.cbu,
+    data.email,
+    data.email_alternativo,
+    data.telefono,
+    data.es_pep,
+    data.referente_nombre,
+    data.referente_cargo,
+    data.referente_cuit,
+    data.referente_dni,
+    data.referente_estado_civil,
+    data.referente_telefono,
+    data.referente_email,
+    data.datos_socios,
+    data.conyuge_nombre ?? "",
+    data.conyuge_dni ?? "",
+    docs,
   ]);
 }

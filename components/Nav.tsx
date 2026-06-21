@@ -14,6 +14,9 @@ export function Nav() {
           <Link href="/precalificacion" className="text-vertix/70 hover:text-vertix">
             Pre-calificación
           </Link>
+          <Link href="/alta" className="text-vertix/70 hover:text-vertix">
+            Alta
+          </Link>
           <Link
             href="/contacto"
             className="rounded-lg bg-vertix px-4 py-2 font-semibold text-white hover:bg-vertix-dark"

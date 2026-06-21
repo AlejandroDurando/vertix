@@ -1,21 +1,25 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { FileInput, Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
 import { postForm } from "@/lib/api-client";
+import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
+import { MIN_DIAS_HABILES } from "@/lib/validations";
 
 type Servicio = "cheques" | "prestamos";
+type TipoPrestamo = "personal" | "prendario";
 
-const TIPO_CHEQUE = [
-  { value: "propio", label: "Propio" },
-  { value: "tercero", label: "Tercero" },
-];
 const TIPO_PERSONA = [
   { value: "humana", label: "Persona humana" },
   { value: "empresa", label: "Empresa" },
+];
+const TIPO_PRESTAMO = [
+  { value: "personal", label: "Personal" },
+  { value: "prendario", label: "Prendario" },
 ];
 const TIPO_INGRESO = [
   { value: "relacion_dependencia", label: "Relación de dependencia" },
@@ -23,13 +27,21 @@ const TIPO_INGRESO = [
   { value: "empresa", label: "Empresa" },
 ];
 
+const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
+
 export function PrecalificacionForm() {
   const [servicio, setServicio] = useState<Servicio>("cheques");
+  const [tipoPrestamo, setTipoPrestamo] = useState<TipoPrestamo | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | undefined>();
   const formRef = useRef<HTMLFormElement>(null);
+
+  const minFechaPago = useMemo(
+    () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
+    []
+  );
 
   function changeServicio(next: Servicio) {
     setServicio(next);
@@ -53,6 +65,7 @@ export function PrecalificacionForm() {
 
     if (res.success) {
       setSuccess(true);
+      setTipoPrestamo("");
       formRef.current?.reset();
     } else {
       setError(res.error);
@@ -73,6 +86,17 @@ export function PrecalificacionForm() {
         onChange={changeServicio}
       />
 
+      {servicio === "cheques" && (
+        <Alert tone="info" title="¿Todavía no sos cliente de Vertix?">
+          Para descontar cheques primero necesitás tener abierta tu cuenta comitente.
+          Si aún no la tenés, completá el{" "}
+          <Link href="/alta" className="font-semibold underline">
+            formulario de alta
+          </Link>{" "}
+          o contactanos: una vez abierta la cuenta vas a poder descontar tus valores.
+        </Alert>
+      )}
+
       <form
         ref={formRef}
         onSubmit={handleSubmit}
@@ -87,7 +111,14 @@ export function PrecalificacionForm() {
 
           {servicio === "cheques" ? (
             <>
-              <Input name="empresa" label="Empresa" required autoComplete="organization" error={fe("empresa")} />
+              <Input
+                name="empresa"
+                label="Empresa"
+                required
+                autoComplete="organization"
+                hint="Si sos persona física, escribí “Titular” o tu nombre."
+                error={fe("empresa")}
+              />
               <Input
                 name="monto_cheque"
                 label="Monto del cheque (ARS)"
@@ -99,21 +130,31 @@ export function PrecalificacionForm() {
                 error={fe("monto_cheque")}
               />
               <Input
-                name="fecha_vencimiento"
-                label="Fecha de vencimiento"
+                name="fecha_pago"
+                label="Fecha de pago del cheque"
                 required
                 type="date"
-                error={fe("fecha_vencimiento")}
+                min={minFechaPago}
+                hint={`Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy.`}
+                error={fe("fecha_pago")}
               />
               <Input name="banco_emisor" label="Banco emisor" required error={fe("banco_emisor")} />
-              <Select
-                name="tipo_cheque"
-                label="Tipo de cheque"
+              <Input
+                name="cuit_librador"
+                label="CUIT del librador del cheque"
                 required
-                options={TIPO_CHEQUE}
-                placeholder="Seleccionar..."
-                defaultValue=""
-                error={fe("tipo_cheque")}
+                inputMode="numeric"
+                placeholder="Sólo números"
+                error={fe("cuit_librador")}
+              />
+              <Input
+                name="cuit_endosatario"
+                label="CUIT del endosatario"
+                required
+                inputMode="numeric"
+                placeholder="Sólo números"
+                hint="A quién se le endosa (probablemente quien envía la solicitud). No puede coincidir con el librador."
+                error={fe("cuit_endosatario")}
               />
             </>
           ) : (
@@ -126,6 +167,24 @@ export function PrecalificacionForm() {
                 placeholder="Seleccionar..."
                 defaultValue=""
                 error={fe("tipo_persona")}
+              />
+              <Select
+                name="tipo_prestamo"
+                label="Tipo de préstamo"
+                required
+                options={TIPO_PRESTAMO}
+                placeholder="Seleccionar..."
+                value={tipoPrestamo}
+                onChange={(e) => setTipoPrestamo(e.target.value as TipoPrestamo)}
+                error={fe("tipo_prestamo")}
+              />
+              <Input
+                name="cuit_solicitante"
+                label="CUIT de quien solicita el préstamo"
+                required
+                inputMode="numeric"
+                placeholder="Sólo números"
+                error={fe("cuit_solicitante")}
               />
               <Input
                 name="monto_solicitado"
@@ -161,14 +220,33 @@ export function PrecalificacionForm() {
         </div>
 
         {servicio === "prestamos" && (
-          <FileInput
-            name="archivo"
-            label="Documentación (PDF o imagen)"
-            required
-            accept="application/pdf,image/jpeg,image/png,image/webp"
-            hint="Recibo de sueldo, balance, monotributo, etc. Máximo 5MB."
-            error={fe("archivo")}
-          />
+          <div className="flex flex-col gap-4">
+            <FileInput
+              name="documentacion"
+              label="Documentación de respaldo"
+              required
+              accept={ACCEPT}
+              hint="Recibo de sueldo, balance, constancia de monotributo, etc. PDF o imagen, máx. 5MB."
+              error={fe("documentacion")}
+            />
+            {tipoPrestamo === "prendario" && (
+              <FileInput
+                name="titulo_automotor"
+                label="Título del automotor"
+                required
+                accept={ACCEPT}
+                hint="Obligatorio para préstamos prendarios (se evalúan los años de vida útil). PDF o imagen, máx. 5MB."
+                error={fe("titulo_automotor")}
+              />
+            )}
+            <FileInput
+              name="constancia_cuit"
+              label="Constancia de CUIT (PJ) o CUIL/DNI (PF) — opcional"
+              accept={ACCEPT}
+              hint="Sumar este adjunto agiliza la evaluación. PDF o imagen, máx. 5MB."
+              error={fe("constancia_cuit")}
+            />
+          </div>
         )}
 
         {error && !fieldError && (

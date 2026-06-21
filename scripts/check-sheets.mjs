@@ -94,7 +94,10 @@ ok("Conexión con Sheets API exitosa");
 
 const rows = res.data.values ?? [];
 if (rows.length === 0) {
-  fail('La hoja "tasas" está vacía', "Agregá las filas: cheques / prestamos_ph / prestamos_pj");
+  fail(
+    'La hoja "tasas" está vacía',
+    "Agregá las filas: cheques_directo / cheques_comitente / prestamos_ph / prestamos_pj (TNA anual en %)"
+  );
 }
 
 const [first, ...rest] = rows;
@@ -115,21 +118,30 @@ for (const row of dataRows) {
   if (f && !updated) updated = String(f);
 }
 
-const expected = ["cheques", "prestamos_ph", "prestamos_pj"];
-const missingRows = expected.filter((s) => !map.has(s));
+// "cheques" funciona como alias y cubre ambas modalidades si no se cargan aparte.
+const chequesAlias = map.get("cheques");
+const chequesDirecto = map.has("cheques_directo") ? map.get("cheques_directo") : chequesAlias;
+const chequesComitente = map.has("cheques_comitente") ? map.get("cheques_comitente") : chequesAlias;
+
+const missingRows = [];
+if (chequesDirecto == null) missingRows.push("cheques_directo (o cheques)");
+if (chequesComitente == null) missingRows.push("cheques_comitente (o cheques)");
+if (!map.has("prestamos_ph")) missingRows.push("prestamos_ph");
+if (!map.has("prestamos_pj")) missingRows.push("prestamos_pj");
 if (missingRows.length > 0) {
   fail(
     `Faltan filas en la hoja: ${missingRows.join(", ")}`,
-    "La hoja debe tener una fila por cada uno de los 3 servicios"
+    "La hoja debe tener una fila por servicio, con la TNA anual en %"
   );
 }
 
-ok("Las 3 filas de servicio están presentes");
+ok("Filas de servicio presentes");
 console.log("");
-console.log(c.bold("Tasas leídas:"));
-console.log(c.dim("  cheques        → ") + c.yellow(`${map.get("cheques")}% diario`));
-console.log(c.dim("  prestamos_ph   → ") + c.yellow(`${(map.get("prestamos_ph") * 100).toFixed(2)}% mensual`));
-console.log(c.dim("  prestamos_pj   → ") + c.yellow(`${(map.get("prestamos_pj") * 100).toFixed(2)}% mensual`));
-if (updated) console.log(c.dim("  actualizado_el → ") + updated);
+console.log(c.bold("Tasas leídas (TNA anual):"));
+console.log(c.dim("  cheques_directo    → ") + c.yellow(`${chequesDirecto}%`));
+console.log(c.dim("  cheques_comitente  → ") + c.yellow(`${chequesComitente}%`));
+console.log(c.dim("  prestamos_ph       → ") + c.yellow(`${map.get("prestamos_ph")}%`));
+console.log(c.dim("  prestamos_pj       → ") + c.yellow(`${map.get("prestamos_pj")}%`));
+if (updated) console.log(c.dim("  actualizado_el     → ") + updated);
 console.log("");
 console.log(c.green(c.bold("Todo OK. ")) + "El simulador va a usar estas tasas.");

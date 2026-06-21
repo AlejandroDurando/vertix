@@ -1,37 +1,31 @@
 import { NextRequest } from "next/server";
-import {
-  ALLOWED_FILE_TYPES,
-  MAX_FILE_SIZE,
-  firstZodError,
-  precalificacionSchema,
-} from "@/lib/validations";
+import { firstZodError, precalificacionSchema } from "@/lib/validations";
 import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
+import { readUploads, type ParsedFile } from "@/lib/uploads";
 import { appendPrecalificacion } from "@/lib/sheets-crm";
 import { emailPrecalificacion } from "@/lib/email";
 import { upsertHubspotContact } from "@/lib/hubspot";
+import { consultarBcra, evaluarBcra } from "@/lib/bcra";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type ParsedBody = {
-  data: Record<string, unknown>;
-  archivo?: {
-    nombre: string;
-    tipo: string;
-    tamano: number;
-    base64: string;
-  };
-};
+const FILE_FIELDS = ["documentacion", "titulo_automotor", "constancia_cuit"];
+const NUMERIC_FIELDS = ["monto_cheque", "monto_solicitado", "plazo_meses"];
 
-async function parseBody(req: NextRequest): Promise<ParsedBody | { error: string }> {
+type Parsed =
+  | { data: Record<string, unknown>; files: Record<string, ParsedFile> }
+  | { error: string };
+
+async function parseBody(req: NextRequest): Promise<Parsed> {
   const contentType = req.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
     try {
       const json = (await req.json()) as Record<string, unknown>;
-      return { data: json };
+      return { data: json, files: {} };
     } catch {
       return { error: "Body inválido (JSON esperado)" };
     }
@@ -39,30 +33,7 @@ async function parseBody(req: NextRequest): Promise<ParsedBody | { error: string
 
   if (contentType.includes("multipart/form-data")) {
     const form = await req.formData();
-    const data: Record<string, unknown> = {};
-    let archivo: ParsedBody["archivo"];
-
-    for (const [key, raw] of form.entries()) {
-      if (raw instanceof File) {
-        if (key !== "archivo") continue;
-        if (raw.size === 0) continue;
-        if (raw.size > MAX_FILE_SIZE)
-          return { error: "El archivo supera el tamaño máximo de 5MB" };
-        if (!ALLOWED_FILE_TYPES.includes(raw.type))
-          return { error: "Formato de archivo no permitido (PDF o imagen)" };
-        const buffer = Buffer.from(await raw.arrayBuffer());
-        archivo = { nombre: raw.name, tipo: raw.type, tamano: raw.size, base64: buffer.toString("base64") };
-        continue;
-      }
-      const value = String(raw);
-      if (["monto_cheque", "monto_solicitado", "plazo_meses"].includes(key)) {
-        const n = Number(value);
-        data[key] = Number.isFinite(n) ? n : value;
-      } else {
-        data[key] = value;
-      }
-    }
-    return { data, archivo };
+    return readUploads(form, { numericFields: NUMERIC_FIELDS, fileFields: FILE_FIELDS });
   }
 
   return { error: "Content-Type no soportado" };
@@ -76,33 +47,67 @@ export async function POST(req: NextRequest) {
     return fail("Demasiadas solicitudes, intentá nuevamente en un minuto.", 429);
   }
 
-  const parsedBody = await parseBody(req);
-  if ("error" in parsedBody) return fail(parsedBody.error, 400);
+  const parsed = await parseBody(req);
+  if ("error" in parsed) return fail(parsed.error, 400);
 
-  const validated = precalificacionSchema.safeParse(parsedBody.data);
+  const validated = precalificacionSchema.safeParse(parsed.data);
   if (!validated.success) {
     const { message, field } = firstZodError(validated.error);
     return fail(message, 400, field);
   }
 
   const data = validated.data;
+  const files = parsed.files;
   const sentAt = new Date().toISOString();
 
-  if (data.servicio === "prestamos" && !parsedBody.archivo) {
-    return fail("El archivo es requerido para préstamos", 400, "archivo");
+  // Validación de adjuntos obligatorios para préstamos.
+  if (data.servicio === "prestamos") {
+    if (!files.documentacion) {
+      return fail("Adjuntá la documentación de respaldo.", 400, "documentacion");
+    }
+    if (data.tipo_prestamo === "prendario" && !files.titulo_automotor) {
+      return fail(
+        "Para préstamos prendarios el título del automotor es obligatorio.",
+        400,
+        "titulo_automotor"
+      );
+    }
   }
 
-  const archivoMeta = parsedBody.archivo
-    ? { nombre: parsedBody.archivo.nombre, tipo: parsedBody.archivo.tipo, tamano: parsedBody.archivo.tamano }
-    : undefined;
+  // Enriquecimiento BCRA (informativo, no bloquea la precalificación).
+  let bcraResumen: string | undefined;
+  if (data.servicio === "cheques") {
+    try {
+      const bcra = await consultarBcra(data.cuit_librador);
+      const ev = evaluarBcra(bcra, "Librador");
+      if (bcra.disponible) {
+        bcraResumen = `Situación máx. ${bcra.situacionMaxima ?? "?"}${
+          bcra.chequesRechazadosImpagos ? " · cheques rechazados impagos" : ""
+        } — ${ev.decision.toUpperCase()}`;
+      }
+    } catch {
+      // best-effort
+    }
+  }
 
-  // Sheets awaited — en serverless el fire-and-forget se cancela
-  await appendPrecalificacion(data, sentAt).catch(() => null);
+  const adjuntos = Object.entries(files).map(([campo, f]) => ({
+    campo,
+    nombre: f.nombre,
+    tipo: f.tipo,
+    tamano: f.tamano,
+    base64: f.base64,
+  }));
 
-  emailPrecalificacion({
-    ...data,
-    ...(archivoMeta ? { archivo: archivoMeta } : {}),
+  // Sheets awaited — en serverless el fire-and-forget se cancela.
+  await appendPrecalificacion(data, sentAt, {
+    adjuntos: adjuntos.map((a) => a.campo),
+    bcra: bcraResumen,
   }).catch(() => null);
+
+  emailPrecalificacion(
+    { ...data, ...(bcraResumen ? { bcra: bcraResumen } : {}) },
+    adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 }))
+  ).catch(() => null);
 
   upsertHubspotContact({
     email: data.email,
@@ -110,12 +115,30 @@ export async function POST(req: NextRequest) {
     phone: data.telefono,
     company: data.servicio === "cheques" ? data.empresa : undefined,
     servicio: data.servicio,
-    extra: data.servicio === "cheques"
-      ? { monto_cheque: data.monto_cheque, tipo_cheque: data.tipo_cheque, banco_emisor: data.banco_emisor, fecha_vencimiento: data.fecha_vencimiento }
-      : { tipo_persona: data.tipo_persona, monto_solicitado: data.monto_solicitado, plazo_meses: data.plazo_meses, tipo_ingreso: data.tipo_ingreso },
+    extra:
+      data.servicio === "cheques"
+        ? {
+            monto_cheque: data.monto_cheque,
+            banco_emisor: data.banco_emisor,
+            fecha_pago: data.fecha_pago,
+            cuit_librador: data.cuit_librador,
+            cuit_endosatario: data.cuit_endosatario,
+          }
+        : {
+            tipo_persona: data.tipo_persona,
+            tipo_prestamo: data.tipo_prestamo,
+            cuit_solicitante: data.cuit_solicitante,
+            monto_solicitado: data.monto_solicitado,
+            plazo_meses: data.plazo_meses,
+            tipo_ingreso: data.tipo_ingreso,
+          },
   }).catch(() => null);
 
-  logger.info("precalificacion", "Solicitud recibida", { servicio: data.servicio, archivo: archivoMeta });
+  logger.info("precalificacion", "Solicitud recibida", {
+    servicio: data.servicio,
+    adjuntos: adjuntos.map((a) => a.campo),
+    bcra: bcraResumen,
+  });
 
-  return ok({ recibido: true, servicio: data.servicio, archivo: archivoMeta });
+  return ok({ recibido: true, servicio: data.servicio });
 }

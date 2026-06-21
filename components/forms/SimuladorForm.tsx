@@ -1,11 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
 import { postJson } from "@/lib/api-client";
+import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
+import { MIN_DIAS_HABILES } from "@/lib/validations";
 import type {
   SimuladorChequesOutput,
   SimuladorPrestamosOutput,
@@ -19,12 +21,26 @@ const TIPO_PERSONA = [
   { value: "humana", label: "Persona humana" },
   { value: "empresa", label: "Empresa" },
 ];
+const INSTRUMENTO = [
+  { value: "cheque", label: "Cheque" },
+  { value: "echeq", label: "Echeq" },
+  { value: "fce", label: "FCE (Factura de Crédito Electrónica)" },
+];
+const MODALIDAD = [
+  { value: "directo", label: "Directo con Vertix" },
+  { value: "comitente", label: "Abriendo cuenta comitente (tasa más baja)" },
+];
 
 const ARS = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
   maximumFractionDigits: 0,
 });
+
+const fmtFecha = (iso: string) => {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+};
 
 export function SimuladorForm() {
   const [tipo, setTipo] = useState<Tipo>("cheques");
@@ -33,6 +49,12 @@ export function SimuladorForm() {
   const [fieldError, setFieldError] = useState<string | undefined>();
   const [chequesResult, setChequesResult] = useState<ChequesResult | null>(null);
   const [prestamosResult, setPrestamosResult] = useState<PrestamosResult | null>(null);
+
+  // Fecha mínima de pago = hoy + 5 días hábiles (no se descuentan valores con menor plazo).
+  const minFechaPago = useMemo(
+    () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
+    []
+  );
 
   function changeTipo(next: Tipo) {
     setTipo(next);
@@ -51,21 +73,16 @@ export function SimuladorForm() {
     const fd = new FormData(e.currentTarget);
     const raw = Object.fromEntries(fd.entries());
 
-    const payload =
-      tipo === "cheques"
-        ? {
-            tipo,
-            monto: Number(raw.monto),
-            dias_vencimiento: Number(raw.dias_vencimiento),
-          }
-        : {
-            tipo,
-            monto: Number(raw.monto),
-            plazo_meses: Number(raw.plazo_meses),
-            tipo_persona: String(raw.tipo_persona),
-          };
-
     if (tipo === "cheques") {
+      const payload = {
+        tipo,
+        monto: Number(raw.monto),
+        fecha_pago: String(raw.fecha_pago ?? ""),
+        modalidad: String(raw.modalidad ?? ""),
+        instrumento: String(raw.instrumento ?? ""),
+        cuit_librador: String(raw.cuit_librador ?? ""),
+        cuit_endosatario: String(raw.cuit_endosatario ?? ""),
+      };
       const res = await postJson<ChequesResult>("/api/simulador", payload);
       setSubmitting(false);
       if (res.success) setChequesResult(res.data);
@@ -75,6 +92,12 @@ export function SimuladorForm() {
         setChequesResult(null);
       }
     } else {
+      const payload = {
+        tipo,
+        monto: Number(raw.monto),
+        plazo_meses: Number(raw.plazo_meses),
+        tipo_persona: String(raw.tipo_persona),
+      };
       const res = await postJson<PrestamosResult>("/api/simulador", payload);
       setSubmitting(false);
       if (res.success) setPrestamosResult(res.data);
@@ -112,16 +135,53 @@ export function SimuladorForm() {
             error={fe("monto")}
           />
           {tipo === "cheques" ? (
-            <Input
-              name="dias_vencimiento"
-              label="Días al vencimiento"
-              type="number"
-              inputMode="numeric"
-              min="1"
-              max="365"
-              required
-              error={fe("dias_vencimiento")}
-            />
+            <>
+              <Select
+                name="instrumento"
+                label="Instrumento"
+                options={INSTRUMENTO}
+                placeholder="Seleccionar..."
+                defaultValue="cheque"
+                required
+                error={fe("instrumento")}
+              />
+              <Select
+                name="modalidad"
+                label="Modalidad"
+                options={MODALIDAD}
+                placeholder="Seleccionar..."
+                defaultValue="directo"
+                required
+                hint="Con cuenta comitente la tasa es más baja."
+                error={fe("modalidad")}
+              />
+              <Input
+                name="fecha_pago"
+                label="Fecha de pago del cheque"
+                type="date"
+                min={minFechaPago}
+                required
+                hint={`Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy.`}
+                error={fe("fecha_pago")}
+              />
+              <Input
+                name="cuit_librador"
+                label="CUIT del librador del cheque"
+                inputMode="numeric"
+                placeholder="Sólo números"
+                required
+                error={fe("cuit_librador")}
+              />
+              <Input
+                name="cuit_endosatario"
+                label="CUIT del endosatario (a quién se endosa)"
+                inputMode="numeric"
+                placeholder="Sólo números"
+                required
+                hint="No puede coincidir con el del librador."
+                error={fe("cuit_endosatario")}
+              />
+            </>
           ) : (
             <>
               <Input
@@ -146,6 +206,13 @@ export function SimuladorForm() {
             </>
           )}
         </div>
+
+        {tipo === "cheques" && (
+          <p className="text-xs text-vertix/60">
+            * No se realizan descuentos de cheques propios (cuando el librador y el
+            endosatario coinciden). Esos casos se canalizan como préstamo.
+          </p>
+        )}
 
         {error && !fieldError && (
           <Alert tone="error" title="No pudimos calcular la simulación">
@@ -192,8 +259,21 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
       <div className="divide-y divide-vertix/10">
         <Row label="Monto a recibir" value={ARS.format(data.monto_a_recibir)} />
         <Row label="Descuento total" value={ARS.format(data.descuento_total)} />
-        <Row label="Tasa diaria aplicada" value={`${data.tasa_aplicada}%`} />
+        <Row
+          label="Modalidad"
+          value={data.modalidad === "comitente" ? "Cuenta comitente" : "Directo con Vertix"}
+        />
+        <Row label="Días considerados" value={`${data.dias_considerados}`} />
+        <Row label="Acreditación estimada" value={fmtFecha(data.fecha_acreditacion_estimada)} />
+        <Row label="Tasa aplicada (TNA)" value={`${data.tna_aplicada}%`} />
       </div>
+      {data.advertencia_bcra && (
+        <div className="mt-4">
+          <Alert tone="warning" title="Requiere análisis previo">
+            {data.advertencia_bcra}
+          </Alert>
+        </div>
+      )}
       <p className="mt-4 text-xs text-vertix/60">{data.disclaimer}</p>
     </ResultCard>
   );
@@ -209,7 +289,8 @@ function PrestamosResultCard({ data }: { data: PrestamosResult }) {
         <Row label="Cuota mensual" value={ARS.format(data.cuota_mensual)} />
         <Row label="Total a pagar" value={ARS.format(data.total_a_pagar)} />
         <Row label="Total intereses" value={ARS.format(data.total_intereses)} />
-        <Row label="Tasa mensual aplicada" value={`${(data.tasa_aplicada * 100).toFixed(2)}%`} />
+        <Row label="Tasa aplicada (TNA)" value={`${data.tna_aplicada}%`} />
+        <Row label="Tasa mensual" value={`${data.tasa_mensual}%`} />
       </div>
       <p className="mt-4 text-xs text-vertix/60">{data.disclaimer}</p>
     </ResultCard>

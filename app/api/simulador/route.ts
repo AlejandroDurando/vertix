@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
-import { firstZodError, simuladorSchema } from "@/lib/validations";
+import { parseSimulador } from "@/lib/validations";
 import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { getTasas } from "@/lib/tasas";
 import { simularCheques, simularPrestamo } from "@/lib/simulador";
+import { consultarBcra, evaluarBcra } from "@/lib/bcra";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -24,18 +25,34 @@ export async function POST(req: NextRequest) {
     return fail("Body inválido (JSON esperado)", 400);
   }
 
-  const parsed = simuladorSchema.safeParse(body);
+  const parsed = parseSimulador(body);
   if (!parsed.success) {
-    const { message, field } = firstZodError(parsed.error);
-    return fail(message, 400, field);
+    return fail(parsed.message, 400, parsed.field);
   }
 
   try {
     const tasas = await getTasas();
 
     if (parsed.data.tipo === "cheques") {
+      // Verificación BCRA sobre el librador del cheque.
+      const bcra = await consultarBcra(parsed.data.cuit_librador);
+      const evaluacion = evaluarBcra(bcra, "El librador del cheque");
+
+      if (evaluacion.decision === "bloquear") {
+        logger.info("simulador", "Presupuesto bloqueado por BCRA", {
+          cuit: bcra.cuit,
+          situacion: bcra.situacionMaxima,
+        });
+        return fail(evaluacion.motivo, 403);
+      }
+
       const result = simularCheques(parsed.data, tasas);
-      return ok(result);
+      return ok({
+        ...result,
+        ...(evaluacion.decision === "advertir"
+          ? { advertencia_bcra: evaluacion.motivo }
+          : {}),
+      });
     }
 
     const result = simularPrestamo(parsed.data, tasas);

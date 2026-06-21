@@ -13,10 +13,13 @@ type CacheEntry = {
 let cache: CacheEntry | null = null;
 let inflight: Promise<Tasas> | null = null;
 
+// Valores expresados como TNA (Tasa Nominal Anual) en %. La hoja "tasas" de
+// Google Sheets debe contener estos valores anuales (ej.: cheques_directo = 43).
 const FALLBACK_TASAS: Tasas = {
-  cheques: 0.15,
-  prestamos_ph: 0.08,
-  prestamos_pj: 0.1,
+  cheques_directo: 43,
+  cheques_comitente: 35,
+  prestamos_ph: 72,
+  prestamos_pj: 82,
   actualizado_el: "fallback",
 };
 
@@ -63,32 +66,50 @@ async function fetchTasasFromSheet(): Promise<Tasas> {
   );
   const dataRows = looksLikeHeader ? rest : rows;
 
-  const map = new Map<TasaServicio, number>();
+  // Servicios reconocidos. "cheques" se acepta como alias y aplica a ambas
+  // modalidades (directo y comitente) cuando no se cargan por separado.
+  const RECONOCIDOS = [
+    "cheques",
+    "cheques_directo",
+    "cheques_comitente",
+    "prestamos_ph",
+    "prestamos_pj",
+  ];
+
+  const map = new Map<string, number>();
   let actualizado_el = "";
 
   for (const row of dataRows) {
     const [servicioRaw, tasaRaw, fechaRaw] = row;
     if (!servicioRaw || tasaRaw == null) continue;
-    const servicio = String(servicioRaw).trim().toLowerCase() as TasaServicio;
-    if (!["cheques", "prestamos_ph", "prestamos_pj"].includes(servicio)) continue;
+    const servicio = String(servicioRaw).trim().toLowerCase();
+    if (!RECONOCIDOS.includes(servicio)) continue;
     const tasa = Number(String(tasaRaw).replace(",", "."));
     if (!Number.isFinite(tasa) || tasa <= 0) continue;
     map.set(servicio, tasa);
     if (fechaRaw && !actualizado_el) actualizado_el = String(fechaRaw);
   }
 
-  const cheques = map.get("cheques");
+  const chequesAlias = map.get("cheques");
+  const cheques_directo = map.get("cheques_directo") ?? chequesAlias;
+  const cheques_comitente = map.get("cheques_comitente") ?? chequesAlias;
   const prestamos_ph = map.get("prestamos_ph");
   const prestamos_pj = map.get("prestamos_pj");
 
-  if (cheques == null || prestamos_ph == null || prestamos_pj == null) {
+  if (
+    cheques_directo == null ||
+    cheques_comitente == null ||
+    prestamos_ph == null ||
+    prestamos_pj == null
+  ) {
     throw new Error(
-      "La hoja de tasas no contiene los 3 servicios requeridos (cheques, prestamos_ph, prestamos_pj)"
+      "La hoja de tasas no contiene todos los servicios requeridos (cheques_directo/cheques_comitente o cheques, prestamos_ph, prestamos_pj)"
     );
   }
 
   return {
-    cheques,
+    cheques_directo,
+    cheques_comitente,
     prestamos_ph,
     prestamos_pj,
     actualizado_el: actualizado_el || new Date().toISOString().slice(0, 10),
@@ -132,8 +153,10 @@ export function getTasaForServicio(
   servicio: TasaServicio
 ): number {
   switch (servicio) {
-    case "cheques":
-      return tasas.cheques;
+    case "cheques_directo":
+      return tasas.cheques_directo;
+    case "cheques_comitente":
+      return tasas.cheques_comitente;
     case "prestamos_ph":
       return tasas.prestamos_ph;
     case "prestamos_pj":

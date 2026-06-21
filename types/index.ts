@@ -13,30 +13,51 @@ export type ApiResponse<T = unknown> = ApiSuccess<T> | ApiError;
 
 export type Servicio = "cheques" | "prestamos";
 export type TipoPersona = "humana" | "empresa";
-export type TipoCheque = "propio" | "tercero";
 export type TipoIngreso = "relacion_dependencia" | "monotributo" | "empresa";
+export type TipoPrestamo = "personal" | "prendario";
 
-export type TasaServicio = "cheques" | "prestamos_ph" | "prestamos_pj";
+// Negociación de cheque/echeq/FCE: directo con Vertix o vía cuenta comitente
+// (esta última con tasas más bajas).
+export type ModalidadCheque = "directo" | "comitente";
+export type InstrumentoCheque = "cheque" | "echeq" | "fce";
 
+export type TasaServicio =
+  | "cheques_directo"
+  | "cheques_comitente"
+  | "prestamos_ph"
+  | "prestamos_pj";
+
+// Las tasas se interpretan como TNA (Tasa Nominal Anual) expresada en porcentaje.
+// Ej.: cheques_directo = 43 → 43% anual. La hoja "tasas" de Google Sheets debe
+// contener estos valores anuales.
 export type Tasas = {
-  cheques: number;
+  cheques_directo: number;
+  cheques_comitente: number;
   prestamos_ph: number;
   prestamos_pj: number;
   actualizado_el: string;
 };
 
+// --- Simulador: cheques ---
 export type SimuladorChequesInput = {
   monto: number;
-  dias_vencimiento: number;
+  fecha_pago: string; // YYYY-MM-DD
+  modalidad: ModalidadCheque;
+  instrumento: InstrumentoCheque;
 };
 
 export type SimuladorChequesOutput = {
   monto_a_recibir: number;
   descuento_total: number;
-  tasa_aplicada: number;
+  tna_aplicada: number; // % anual
+  modalidad: ModalidadCheque;
+  dias_considerados: number;
+  fecha_acreditacion_estimada: string; // YYYY-MM-DD (fecha_pago + 2/3 hábiles)
   disclaimer: string;
+  advertencia_bcra?: string; // observación BCRA cuando corresponde análisis previo
 };
 
+// --- Simulador: préstamos ---
 export type SimuladorPrestamosInput = {
   monto: number;
   plazo_meses: number;
@@ -47,10 +68,12 @@ export type SimuladorPrestamosOutput = {
   cuota_mensual: number;
   total_a_pagar: number;
   total_intereses: number;
-  tasa_aplicada: number;
+  tna_aplicada: number; // % anual
+  tasa_mensual: number; // % mensual
   disclaimer: string;
 };
 
+// --- Contacto ---
 export type ContactoData = {
   nombre: string;
   email: string;
@@ -60,16 +83,18 @@ export type ContactoData = {
   mensaje: string;
 };
 
+// --- Precalificación ---
 export type PrecalificacionChequesData = {
   servicio: "cheques";
   nombre: string;
   email: string;
   telefono: string;
-  empresa: string;
+  empresa: string; // PF: "Titular" o nombre
   monto_cheque: number;
-  fecha_vencimiento: string;
+  fecha_pago: string;
   banco_emisor: string;
-  tipo_cheque: TipoCheque;
+  cuit_librador: string;
+  cuit_endosatario: string;
 };
 
 export type PrecalificacionPrestamosData = {
@@ -78,16 +103,18 @@ export type PrecalificacionPrestamosData = {
   email: string;
   telefono: string;
   tipo_persona: TipoPersona;
+  tipo_prestamo: TipoPrestamo;
+  cuit_solicitante: string;
   monto_solicitado: number;
   plazo_meses: number;
   tipo_ingreso: TipoIngreso;
-  archivo?: {
-    nombre: string;
-    tipo: string;
-    tamano: number;
-  };
 };
 
 export type PrecalificacionData =
   | PrecalificacionChequesData
   | PrecalificacionPrestamosData;
+
+// El alta de cuenta comitente (AdCap / Sailing) tipa sus datos directamente
+// desde los esquemas zod en lib/validations.ts (AltaInput).
+export type Alyc = "adcap" | "sailing";
+export type TipoAlta = "fisica" | "juridica";

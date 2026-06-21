@@ -1,6 +1,6 @@
 "use client";
 
-type Tone = "success" | "error" | "info";
+type Tone = "success" | "error" | "info" | "warning";
 
 const tones: Record<Tone, { wrap: string; title: string }> = {
   success: {
@@ -10,6 +10,10 @@ const tones: Record<Tone, { wrap: string; title: string }> = {
   error: {
     wrap: "border-red-200 bg-red-50 text-red-800",
     title: "text-red-900",
+  },
+  warning: {
+    wrap: "border-amber-200 bg-amber-50 text-amber-800",
+    title: "text-amber-900",
   },
   info: {
     wrap: "border-vertix/15 bg-vertix/5 text-vertix",
