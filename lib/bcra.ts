@@ -21,6 +21,7 @@
 
 import { logger } from "./logger";
 import { normalizarCuit } from "./cuit";
+import type { BcraInfo } from "@/types";
 
 const BASE = "https://api.bcra.gob.ar/CentralDeDeudores/v1.0/Deudas";
 const TIMEOUT_MS = 8000;
@@ -187,4 +188,23 @@ export function evaluarBcra(r: BcraResultado, etiqueta = "El librador"): BcraDec
   }
 
   return { decision: "permitir", motivo: "Sin observaciones en el BCRA." };
+}
+
+/** Resumen para mostrar al usuario (siempre, esté limpio o no). */
+export function infoBcra(r: BcraResultado, etiqueta: string): BcraInfo {
+  const ev = evaluarBcra(r, etiqueta);
+  const estado: BcraInfo["estado"] = !r.disponible
+    ? "no_verificado"
+    : ev.decision === "bloquear"
+      ? "riesgo"
+      : ev.decision === "advertir"
+        ? "analisis"
+        : "ok";
+  return {
+    cuit: r.cuit,
+    situacion: r.disponible ? r.situacionMaxima : null,
+    cheques_rechazados: r.chequesRechazadosImpagos,
+    estado,
+    mensaje: ev.motivo,
+  };
 }

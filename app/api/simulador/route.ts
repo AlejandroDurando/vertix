@@ -4,7 +4,7 @@ import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { getTasas } from "@/lib/tasas";
 import { simularCheques, simularPrestamo } from "@/lib/simulador";
-import { consultarBcra, evaluarBcra } from "@/lib/bcra";
+import { consultarBcra, evaluarBcra, infoBcra } from "@/lib/bcra";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -34,14 +34,18 @@ export async function POST(req: NextRequest) {
     const tasas = await getTasas();
 
     if (parsed.data.tipo === "cheques") {
-      // Verificación BCRA sobre el librador del cheque.
-      const bcra = await consultarBcra(parsed.data.cuit_librador);
-      const evaluacion = evaluarBcra(bcra, "El librador del cheque");
+      // Verificación BCRA de ambos CUIT. El bloqueo del presupuesto se decide
+      // sobre el librador; del endosatario se informa al usuario.
+      const [libradorRes, endosatarioRes] = await Promise.all([
+        consultarBcra(parsed.data.cuit_librador),
+        consultarBcra(parsed.data.cuit_endosatario),
+      ]);
+      const evaluacion = evaluarBcra(libradorRes, "El librador del cheque");
 
       if (evaluacion.decision === "bloquear") {
         logger.info("simulador", "Presupuesto bloqueado por BCRA", {
-          cuit: bcra.cuit,
-          situacion: bcra.situacionMaxima,
+          cuit: libradorRes.cuit,
+          situacion: libradorRes.situacionMaxima,
         });
         return fail(evaluacion.motivo, 403);
       }
@@ -49,9 +53,10 @@ export async function POST(req: NextRequest) {
       const result = simularCheques(parsed.data, tasas);
       return ok({
         ...result,
-        ...(evaluacion.decision === "advertir"
-          ? { advertencia_bcra: evaluacion.motivo }
-          : {}),
+        bcra: {
+          librador: infoBcra(libradorRes, "El librador"),
+          endosatario: infoBcra(endosatarioRes, "El endosatario"),
+        },
       });
     }
 

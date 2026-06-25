@@ -46,6 +46,16 @@ export type SimuladorChequesInput = {
   instrumento: InstrumentoCheque;
 };
 
+export type BcraEstado = "ok" | "analisis" | "riesgo" | "no_verificado";
+
+export type BcraInfo = {
+  cuit: string;
+  situacion: number | null;
+  cheques_rechazados: boolean;
+  estado: BcraEstado;
+  mensaje: string;
+};
+
 export type SimuladorChequesOutput = {
   monto_a_recibir: number;
   descuento_total: number;
@@ -54,7 +64,8 @@ export type SimuladorChequesOutput = {
   dias_considerados: number;
   fecha_acreditacion_estimada: string; // YYYY-MM-DD (fecha_pago + 2/3 hábiles)
   disclaimer: string;
-  advertencia_bcra?: string; // observación BCRA cuando corresponde análisis previo
+  // Verificación BCRA de los CUIT cargados (siempre presente).
+  bcra?: { librador: BcraInfo; endosatario: BcraInfo };
 };
 
 // --- Simulador: préstamos ---

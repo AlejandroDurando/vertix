@@ -7,8 +7,10 @@ import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
 import { postJson } from "@/lib/api-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
+import { formatearCuit } from "@/lib/cuit";
 import { MIN_DIAS_HABILES } from "@/lib/validations";
 import type {
+  BcraInfo,
   SimuladorChequesOutput,
   SimuladorPrestamosOutput,
 } from "@/types";
@@ -267,15 +269,50 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
         <Row label="Acreditación estimada" value={fmtFecha(data.fecha_acreditacion_estimada)} />
         <Row label="Tasa aplicada (TNA)" value={`${data.tna_aplicada}%`} />
       </div>
-      {data.advertencia_bcra && (
-        <div className="mt-4">
-          <Alert tone="warning" title="Requiere análisis previo">
-            {data.advertencia_bcra}
-          </Alert>
+      {data.bcra && (
+        <div className="mt-5">
+          <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-vertix/60">
+            Verificación BCRA
+          </h4>
+          <div className="flex flex-col gap-2">
+            <BcraRow titulo="Librador" info={data.bcra.librador} />
+            <BcraRow titulo="Endosatario" info={data.bcra.endosatario} />
+          </div>
         </div>
       )}
       <p className="mt-4 text-xs text-vertix/60">{data.disclaimer}</p>
     </ResultCard>
+  );
+}
+
+const BCRA_ESTILO: Record<
+  BcraInfo["estado"],
+  { label: string; clase: string }
+> = {
+  ok: { label: "Sin observaciones", clase: "bg-green-100 text-green-800" },
+  analisis: { label: "Requiere análisis", clase: "bg-amber-100 text-amber-800" },
+  riesgo: { label: "Situación de riesgo", clase: "bg-red-100 text-red-800" },
+  no_verificado: { label: "No se pudo verificar", clase: "bg-vertix/10 text-vertix/70" },
+};
+
+function BcraRow({ titulo, info }: { titulo: string; info: BcraInfo }) {
+  const e = BCRA_ESTILO[info.estado];
+  return (
+    <div className="rounded-lg border border-vertix/10 bg-white p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-vertix">{titulo}</p>
+          <p className="truncate text-xs text-vertix/60">
+            CUIT {formatearCuit(info.cuit)}
+            {info.situacion != null && ` · Situación ${info.situacion}`}
+            {info.cheques_rechazados && " · cheques rechazados"}
+          </p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${e.clase}`}>
+          {e.label}
+        </span>
+      </div>
+    </div>
   );
 }
 
