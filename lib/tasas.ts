@@ -44,17 +44,14 @@ function buildAuth() {
   });
 }
 
-async function fetchTasasFromSheet(): Promise<Tasas> {
-  const sheetId = envOrThrow("GOOGLE_SHEETS_ID");
-  const auth = buildAuth();
-  const sheets = google.sheets({ version: "v4", auth });
+// Rango plausible para una TNA en %. Valores fuera de esto casi seguro son un
+// error de carga (ej. el formato viejo en fracción: cheques=0.15) y se ignoran
+// para no emitir presupuestos absurdos.
+const TASA_MIN = 5;
+const TASA_MAX = 300;
 
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range: SHEET_RANGE,
-  });
-
-  const rows = res.data.values ?? [];
+/** Parsea las filas de la hoja "tasas". Exportada para poder testearla. */
+export function parseTasasRows(rows: unknown[][]): Tasas {
   if (rows.length === 0) {
     throw new Error('La hoja "tasas" está vacía');
   }
@@ -86,6 +83,13 @@ async function fetchTasasFromSheet(): Promise<Tasas> {
     if (!RECONOCIDOS.includes(servicio)) continue;
     const tasa = Number(String(tasaRaw).replace(",", "."));
     if (!Number.isFinite(tasa) || tasa <= 0) continue;
+    if (tasa < TASA_MIN || tasa > TASA_MAX) {
+      logger.warn("tasas", `Tasa fuera de rango para "${servicio}" — ignorada`, {
+        tasa,
+        rango: `${TASA_MIN}-${TASA_MAX}`,
+      });
+      continue;
+    }
     map.set(servicio, tasa);
     if (fechaRaw && !actualizado_el) actualizado_el = String(fechaRaw);
   }
@@ -114,6 +118,19 @@ async function fetchTasasFromSheet(): Promise<Tasas> {
     prestamos_pj,
     actualizado_el: actualizado_el || new Date().toISOString().slice(0, 10),
   };
+}
+
+async function fetchTasasFromSheet(): Promise<Tasas> {
+  const sheetId = envOrThrow("GOOGLE_SHEETS_ID");
+  const auth = buildAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: SHEET_RANGE,
+  });
+
+  return parseTasasRows(res.data.values ?? []);
 }
 
 export async function getTasas(opts?: { forceRefresh?: boolean }): Promise<Tasas> {

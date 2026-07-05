@@ -4,7 +4,7 @@ import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { readUploads, type ParsedFile } from "@/lib/uploads";
 import { appendPrecalificacion } from "@/lib/sheets-crm";
-import { emailPrecalificacion } from "@/lib/email";
+import { emailConfirmacionPrecalificacion, emailPrecalificacion } from "@/lib/email";
 import { upsertHubspotContact } from "@/lib/hubspot";
 import { consultarBcra, evaluarBcra } from "@/lib/bcra";
 import { logger } from "@/lib/logger";
@@ -98,18 +98,36 @@ export async function POST(req: NextRequest) {
     base64: f.base64,
   }));
 
-  // Sheets awaited — en serverless el fire-and-forget se cancela.
-  await appendPrecalificacion(data, sentAt, {
-    adjuntos: adjuntos.map((a) => a.campo),
-    bcra: bcraResumen,
+  // Todo awaited: en serverless los fire-and-forget se cancelan al responder.
+  const [sheetsRes, emailRes] = await Promise.all([
+    appendPrecalificacion(data, sentAt, {
+      adjuntos: adjuntos.map((a) => a.campo),
+      bcra: bcraResumen,
+    }),
+    emailPrecalificacion(
+      { ...data, ...(bcraResumen ? { bcra: bcraResumen } : {}) },
+      adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 }))
+    ),
+  ]);
+
+  // La solicitud tiene que quedar registrada en al menos un destino.
+  if (!sheetsRes.ok && !emailRes.ok) {
+    logger.error("precalificacion", "No se pudo registrar la solicitud en ningún destino", {
+      sheets: sheetsRes.reason,
+      email: emailRes.reason,
+    });
+    return fail(
+      "No pudimos registrar tu solicitud en este momento. Intentá nuevamente en unos minutos.",
+      503
+    );
+  }
+
+  // Reporte al solicitante + HubSpot (best-effort, pero awaited por serverless).
+  const confirmacion = await emailConfirmacionPrecalificacion(data.email, {
+    ...data,
   }).catch(() => null);
 
-  emailPrecalificacion(
-    { ...data, ...(bcraResumen ? { bcra: bcraResumen } : {}) },
-    adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 }))
-  ).catch(() => null);
-
-  upsertHubspotContact({
+  await upsertHubspotContact({
     email: data.email,
     firstName: data.nombre,
     phone: data.telefono,
@@ -138,7 +156,12 @@ export async function POST(req: NextRequest) {
     servicio: data.servicio,
     adjuntos: adjuntos.map((a) => a.campo),
     bcra: bcraResumen,
+    confirmacion_enviada: confirmacion?.ok ?? false,
   });
 
-  return ok({ recibido: true, servicio: data.servicio });
+  return ok({
+    recibido: true,
+    servicio: data.servicio,
+    confirmacion_enviada: confirmacion?.ok ?? false,
+  });
 }

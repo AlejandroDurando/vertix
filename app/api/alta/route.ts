@@ -4,7 +4,7 @@ import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { readUploads } from "@/lib/uploads";
 import { appendAlta } from "@/lib/sheets-crm";
-import { emailAlta } from "@/lib/email";
+import { emailAlta, emailConfirmacionAlta } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -105,18 +105,46 @@ export async function POST(req: NextRequest) {
   const sentAt = new Date().toISOString();
   const adjuntos = Object.entries(files).map(([campo, f]) => ({ campo, ...f }));
 
-  await appendAlta(data, sentAt, adjuntos.map((a) => a.campo)).catch(() => null);
+  // Todo awaited: en serverless los fire-and-forget se cancelan al responder.
+  const [sheetsRes, emailRes] = await Promise.all([
+    appendAlta(data, sentAt, adjuntos.map((a) => a.campo)),
+    emailAlta(
+      data,
+      adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 }))
+    ),
+  ]);
 
-  emailAlta(
-    data,
-    adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 }))
-  ).catch(() => null);
+  // El alta tiene que quedar registrada en al menos un destino.
+  if (!sheetsRes.ok && !emailRes.ok) {
+    logger.error("alta", "No se pudo registrar el alta en ningún destino", {
+      sheets: sheetsRes.reason,
+      email: emailRes.reason,
+    });
+    return fail(
+      "No pudimos registrar tu solicitud en este momento. Intentá nuevamente en unos minutos.",
+      503
+    );
+  }
+
+  // Confirmación al solicitante (best-effort, pero awaited por serverless).
+  const confirmacion = await emailConfirmacionAlta(data.email, {
+    nombre: data.tipo === "fisica" ? `${data.nombre} ${data.apellido}` : data.razon_social,
+    tipo: data.tipo,
+    alyc: data.alyc,
+    adjuntos: adjuntos.map((a) => LABELS[a.campo] ?? a.campo),
+  }).catch(() => null);
 
   logger.info("alta", "Alta recibida", {
     tipo: data.tipo,
     alyc: data.alyc,
     adjuntos: adjuntos.map((a) => a.campo),
+    confirmacion_enviada: confirmacion?.ok ?? false,
   });
 
-  return ok({ recibido: true, tipo: data.tipo, alyc: data.alyc });
+  return ok({
+    recibido: true,
+    tipo: data.tipo,
+    alyc: data.alyc,
+    confirmacion_enviada: confirmacion?.ok ?? false,
+  });
 }

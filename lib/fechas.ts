@@ -105,6 +105,10 @@ export function diasCalendarioEntre(desde: Date, hasta: Date): number {
 }
 
 export function hoy(): Date {
-  const n = new Date();
-  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  // Fecha "de hoy" en Argentina. El servidor puede correr en UTC (Vercel),
+  // donde desde las 21:00 ART el día calendario ya cambió.
+  const iso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  }).format(new Date());
+  return parseISODate(iso);
 }

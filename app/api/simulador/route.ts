@@ -34,20 +34,27 @@ export async function POST(req: NextRequest) {
     const tasas = await getTasas();
 
     if (parsed.data.tipo === "cheques") {
-      // Verificación BCRA de ambos CUIT. El bloqueo del presupuesto se decide
-      // sobre el librador; del endosatario se informa al usuario.
+      // Verificación BCRA de ambos CUIT. El presupuesto no se emite si el
+      // librador o el endosatario están en situación 3 o superior (CAMBIOS.md).
       const [libradorRes, endosatarioRes] = await Promise.all([
         consultarBcra(parsed.data.cuit_librador),
         consultarBcra(parsed.data.cuit_endosatario),
       ]);
-      const evaluacion = evaluarBcra(libradorRes, "El librador del cheque");
+      const evLibrador = evaluarBcra(libradorRes, "El librador del cheque");
+      const evEndosatario = evaluarBcra(endosatarioRes, "El endosatario del cheque");
+      const bloqueo =
+        evLibrador.decision === "bloquear"
+          ? { ev: evLibrador, res: libradorRes }
+          : evEndosatario.decision === "bloquear"
+            ? { ev: evEndosatario, res: endosatarioRes }
+            : null;
 
-      if (evaluacion.decision === "bloquear") {
+      if (bloqueo) {
         logger.info("simulador", "Presupuesto bloqueado por BCRA", {
-          cuit: libradorRes.cuit,
-          situacion: libradorRes.situacionMaxima,
+          cuit: bloqueo.res.cuit,
+          situacion: bloqueo.res.situacionMaxima,
         });
-        return fail(evaluacion.motivo, 403);
+        return fail(bloqueo.ev.motivo, 403);
       }
 
       const result = simularCheques(parsed.data, tasas);

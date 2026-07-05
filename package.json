@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "check:sheets": "node --env-file=.env.local scripts/check-sheets.mjs"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "eslint-config-next": "^14.2.35",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.4",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "vitest": "^4.1.9"
   }
 }

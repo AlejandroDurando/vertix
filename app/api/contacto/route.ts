@@ -34,12 +34,25 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
   const sentAt = new Date().toISOString();
 
-  // Sheets primero (awaited — en serverless el fire-and-forget se cancela)
-  await appendContacto(data, sentAt).catch(() => null);
+  // Todo awaited: en serverless los fire-and-forget se cancelan al responder.
+  const [sheetsRes, emailRes] = await Promise.all([
+    appendContacto(data, sentAt),
+    emailContacto(data),
+  ]);
 
-  // Email y HubSpot en paralelo, no bloquean respuesta si fallan
-  emailContacto(data).catch(() => null);
-  upsertHubspotContact({
+  // La consulta tiene que quedar registrada en al menos un destino.
+  if (!sheetsRes.ok && !emailRes.ok) {
+    logger.error("contacto", "No se pudo registrar la consulta en ningún destino", {
+      sheets: sheetsRes.reason,
+      email: emailRes.reason,
+    });
+    return fail(
+      "No pudimos registrar tu consulta en este momento. Intentá nuevamente en unos minutos.",
+      503
+    );
+  }
+
+  await upsertHubspotContact({
     email: data.email,
     firstName: data.nombre,
     phone: data.telefono,

@@ -38,3 +38,8 @@ next-env.d.ts
 
 # documentos del cliente (no versionar)
 *.docx
+
+# notas internas de trabajo (no versionar)
+CAMBIOS.md
+pendientes.md
+AUDITORIA.md
