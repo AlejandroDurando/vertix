@@ -37,7 +37,7 @@ const fechaSchema = z
 
 const fechaPagoChequeSchema = fechaSchema.refine(
   (v) => diasHabilesEntre(hoy(), parseISODate(v)) >= MIN_DIAS_HABILES,
-  `La fecha de pago debe ser de al menos ${MIN_DIAS_HABILES} días hábiles. No se pueden descontar valores con vencimiento menor.`
+  `Por este medio no se descuentan cheques con vencimiento menor a ${MIN_DIAS_HABILES} días hábiles. Comunicate con nosotros y podemos ver otra manera de negociación.`
 );
 
 const montoSchema = z
@@ -211,6 +211,8 @@ export const altaPersonaFisicaSchema = z
     email_alternativo: emailSchema,
     telefono: telefonoSchema,
     es_pep: siNo,
+    // Sailing: define si debe adjuntar un servicio a su nombre.
+    domicilio_dni_actual: siNo.optional(),
     // Cónyuge (obligatorio si está casado/a)
     conyuge_nombre: requerido(160).optional().or(z.literal("")),
     conyuge_dni: z.union([dniSchema, z.literal("")]).optional(),
@@ -221,6 +223,13 @@ export const altaPersonaFisicaSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["conyuge_nombre"], message: "Requerido para casados/as" });
       if (!d.conyuge_dni)
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["conyuge_dni"], message: "Requerido para casados/as" });
+    }
+    if (d.alyc === "sailing" && !d.domicilio_dni_actual) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["domicilio_dni_actual"],
+        message: "Indicá si el domicilio de tu DNI es el actual",
+      });
     }
   });
 
@@ -262,6 +271,16 @@ export const altaPersonaJuridicaSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["conyuge_nombre"], message: "Requerido si el firmante es casado/a" });
       if (!d.conyuge_dni)
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["conyuge_dni"], message: "Requerido si el firmante es casado/a" });
+    }
+    // Las aperturas de personas jurídicas se realizan únicamente en AdCap
+    // (Sailing sólo abre cuentas de personas físicas, salvo excepciones).
+    if (d.alyc === "sailing") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["alyc"],
+        message:
+          "Las cuentas de personas jurídicas se abren en AdCap. Para excepciones, contactanos.",
+      });
     }
   });
 

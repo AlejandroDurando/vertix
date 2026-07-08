@@ -39,6 +39,36 @@ describe("parseTasasRows", () => {
     expect(t.cheques_comitente).toBe(40);
   });
 
+  it("lee el arancel de cheques cuando está en la hoja", () => {
+    const t = parseTasasRows([
+      ["cheques_directo", "48"],
+      ["cheques_comitente", "35"],
+      ["arancel_cheques", "2,5"],
+      ["prestamos_ph", "72"],
+      ["prestamos_pj", "82"],
+    ]);
+    expect(t.arancel_cheques).toBe(2.5);
+  });
+
+  it("usa el arancel por defecto (2,5) si no está en la hoja", () => {
+    const t = parseTasasRows([
+      ["cheques", "48"],
+      ["prestamos_ph", "72"],
+      ["prestamos_pj", "82"],
+    ]);
+    expect(t.arancel_cheques).toBe(2.5);
+  });
+
+  it("ignora un arancel absurdo y usa el default", () => {
+    const t = parseTasasRows([
+      ["cheques", "48"],
+      ["arancel_cheques", "250"],
+      ["prestamos_ph", "72"],
+      ["prestamos_pj", "82"],
+    ]);
+    expect(t.arancel_cheques).toBe(2.5);
+  });
+
   it("ignora tasas fuera de rango (formato fracción viejo, ej. 0.15)", () => {
     // cheques=0.15 se descarta → faltan las tasas de cheques → error → fallback.
     expect(() =>

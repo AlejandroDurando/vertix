@@ -36,12 +36,14 @@ export function PrecalificacionForm() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | undefined>();
+  const [fechaPago, setFechaPago] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
 
   const minFechaPago = useMemo(
     () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
     []
   );
+  const fechaMuyCercana = fechaPago !== "" && fechaPago < minFechaPago;
 
   function changeServicio(next: Servicio) {
     setServicio(next);
@@ -136,6 +138,7 @@ export function PrecalificacionForm() {
                 type="date"
                 min={minFechaPago}
                 hint={`Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy.`}
+                onChange={(e) => setFechaPago(e.target.value)}
                 error={fe("fecha_pago")}
               />
               <Input name="banco_emisor" label="Banco emisor" required error={fe("banco_emisor")} />
@@ -218,6 +221,14 @@ export function PrecalificacionForm() {
             </>
           )}
         </div>
+
+        {servicio === "cheques" && fechaMuyCercana && (
+          <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
+            Por este medio no podemos tomar cheques con vencimiento menor a 5 días
+            hábiles. <Link href="/contacto" className="font-semibold underline">Comunicate con nosotros</Link>{" "}
+            y podemos ver otra manera de negociación.
+          </Alert>
+        )}
 
         {servicio === "prestamos" && (
           <div className="flex flex-col gap-4">

@@ -51,6 +51,7 @@ export function AltaForm() {
   const formRef = useRef<HTMLFormElement>(null);
 
   function resetConditionals() {
+    setAlyc("");
     setEstadoCivil("");
     setRefEstadoCivil("");
     setTipoSocietario("");
@@ -161,20 +162,35 @@ export function AltaForm() {
         noValidate
       >
         <Section title="Sociedad de bolsa (ALyC)">
-          <Select
-            name="alyc"
-            label="¿Dónde abrís la cuenta?"
-            required
-            options={ALYC}
-            placeholder="Seleccionar..."
-            value={alyc}
-            onChange={(e) => setAlyc(e.target.value as Alyc)}
-            error={fe("alyc")}
-          />
+          {tipo === "fisica" ? (
+            <Select
+              name="alyc"
+              label="¿Dónde abrís la cuenta?"
+              required
+              options={ALYC}
+              placeholder="Seleccionar..."
+              value={alyc}
+              onChange={(e) => setAlyc(e.target.value as Alyc)}
+              error={fe("alyc")}
+            />
+          ) : (
+            <div className="md:col-span-2">
+              <input type="hidden" name="alyc" value="adcap" />
+              <p className="text-sm text-vertix/70">
+                Las cuentas de personas jurídicas se abren en <strong>AdCap</strong>.
+                Si necesitás una excepción, contactanos.
+              </p>
+            </div>
+          )}
         </Section>
 
         {tipo === "fisica" ? (
-          <FisicaFields fe={fe} estadoCivil={estadoCivil} setEstadoCivil={setEstadoCivil} />
+          <FisicaFields
+            fe={fe}
+            alyc={alyc}
+            estadoCivil={estadoCivil}
+            setEstadoCivil={setEstadoCivil}
+          />
         ) : (
           <JuridicaFields
             fe={fe}
@@ -224,14 +240,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function FisicaFields({
   fe,
+  alyc,
   estadoCivil,
   setEstadoCivil,
 }: {
   fe: FE;
+  alyc: string;
   estadoCivil: string;
   setEstadoCivil: (v: string) => void;
 }) {
   const casado = estadoCivil === "casado";
+  const sailing = alyc === "sailing";
+  const [domicilioDniActual, setDomicilioDniActual] = useState("");
   return (
     <>
       <Section title="Datos del titular">
@@ -256,6 +276,22 @@ function FisicaFields({
         <Select name="es_autonomo" label="¿Es autónomo?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_autonomo")} />
         <Select name="es_pep" label="¿Persona Expuesta Políticamente?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_pep")} />
         <Input name="cbu" label="CBU" required inputMode="numeric" placeholder="22 dígitos" error={fe("cbu")} />
+        {sailing && (
+          <Select
+            name="domicilio_dni_actual"
+            label="¿El domicilio de tu DNI es el actual?"
+            required
+            options={[
+              { value: "si", label: "Sí" },
+              { value: "no", label: "No" },
+            ]}
+            placeholder="Seleccionar..."
+            value={domicilioDniActual}
+            onChange={(e) => setDomicilioDniActual(e.target.value)}
+            hint="Si no lo es, vas a tener que adjuntar un servicio a tu nombre."
+            error={fe("domicilio_dni_actual")}
+          />
+        )}
       </Section>
 
       <Section title="Domicilio">
@@ -282,6 +318,42 @@ function FisicaFields({
         <FileInput name="dni_frente" label="DNI (frente)" required accept={ACCEPT} error={fe("dni_frente")} />
         <FileInput name="dni_dorso" label="DNI (dorso)" required accept={ACCEPT} error={fe("dni_dorso")} />
         <FileInput name="constancia_cbu" label="Constancia de CBU" required accept={ACCEPT} error={fe("constancia_cbu")} />
+        {sailing && (
+          <>
+            <FileInput
+              name="selfie_dni"
+              label="Foto selfie con DNI"
+              required
+              accept={ACCEPT}
+              error={fe("selfie_dni")}
+            />
+            <FileInput
+              name="foto_aleatoria"
+              label="Foto aleatoria"
+              required
+              accept={ACCEPT}
+              hint="Por ejemplo, levantando la palma de la mano derecha."
+              error={fe("foto_aleatoria")}
+            />
+            {domicilioDniActual === "no" && (
+              <FileInput
+                name="servicio_titular"
+                label="Servicio a nombre del titular"
+                required
+                accept={ACCEPT}
+                hint="Luz, gas, teléfono, etc., con tu domicilio actual."
+                error={fe("servicio_titular")}
+              />
+            )}
+            <FileInput
+              name="constancia_ingresos"
+              label="Últimos 3 recibos de sueldo o constancia de monotributo"
+              accept={ACCEPT}
+              hint="Si no contás con ninguna, se te asignará un cupo operativo según tu nivel socioeconómico."
+              error={fe("constancia_ingresos")}
+            />
+          </>
+        )}
         {casado && (
           <>
             <FileInput name="conyuge_dni_frente" label="DNI del cónyuge (frente)" required accept={ACCEPT} error={fe("conyuge_dni_frente")} />

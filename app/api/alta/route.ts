@@ -19,6 +19,11 @@ const FILE_FIELDS = [
   "conyuge_dni_frente",
   "conyuge_dni_dorso",
   "nota_epyme_firmada",
+  // Persona física — requisitos adicionales de Sailing
+  "selfie_dni",
+  "foto_aleatoria",
+  "servicio_titular",
+  "constancia_ingresos",
   // Persona jurídica
   "estatuto",
   "registro_acciones",
@@ -35,6 +40,10 @@ const LABELS: Record<string, string> = {
   conyuge_dni_frente: "DNI del cónyuge (frente)",
   conyuge_dni_dorso: "DNI del cónyuge (dorso)",
   nota_epyme_firmada: "Nota de Adhesión EPYME firmada",
+  selfie_dni: "Foto selfie con DNI",
+  foto_aleatoria: "Foto aleatoria (ej. palma derecha levantada)",
+  servicio_titular: "Servicio a nombre del titular",
+  constancia_ingresos: "Últimos 3 recibos de sueldo o constancia de monotributo",
   estatuto: "Estatuto y modificaciones",
   registro_acciones: "Libro de Registro de Acciones",
   constancia_cuit: "Constancia de CUIT",
@@ -74,6 +83,16 @@ export async function POST(req: NextRequest) {
     required.push("dni_frente", "dni_dorso", "constancia_cbu", "nota_epyme_firmada");
     if (data.estado_civil === "casado") {
       required.push("conyuge_dni_frente", "conyuge_dni_dorso");
+    }
+    // Requisitos adicionales de Sailing para personas físicas.
+    if (data.alyc === "sailing") {
+      required.push("selfie_dni", "foto_aleatoria");
+      // Servicio a nombre del titular sólo si el domicilio del DNI no es el actual.
+      if (data.domicilio_dni_actual === "no") {
+        required.push("servicio_titular");
+      }
+      // Los recibos de sueldo/monotributo NO son bloqueantes: si no los tiene,
+      // Sailing hace una búsqueda interna y asigna cupo según NSE.
     }
   } else {
     required.push(

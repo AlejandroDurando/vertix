@@ -9,8 +9,9 @@ import { parseISODate, toISODate } from "@/lib/fechas";
 import type { Tasas } from "@/types";
 
 const TASAS: Tasas = {
-  cheques_directo: 43,
+  cheques_directo: 48,
   cheques_comitente: 35,
+  arancel_cheques: 2.5,
   prestamos_ph: 72,
   prestamos_pj: 82,
   actualizado_el: "test",
@@ -49,15 +50,23 @@ describe("simularCheques", () => {
     // Acreditación: 2026-01-14 → 9 días calendario desde el 05.
     expect(r.fecha_acreditacion_estimada).toBe("2026-01-14");
     expect(r.dias_considerados).toBe(9);
-    // 1.000.000 * 43% * 9/365
-    expect(r.descuento_total).toBeCloseTo(10602.74, 2);
-    expect(r.monto_a_recibir).toBeCloseTo(989397.26, 2);
-    expect(r.tna_aplicada).toBe(43);
+    // 1.000.000 * (48% + 2,5%) * 9/365
+    expect(r.descuento_total).toBeCloseTo(12452.05, 2);
+    expect(r.monto_a_recibir).toBeCloseTo(987547.95, 2);
+    expect(r.tna_aplicada).toBe(50.5);
   });
 
-  it("usa la tasa comitente cuando corresponde", () => {
+  it("la tasa total desglosa interés + arancel", () => {
+    const r = simularCheques(input, TASAS, ahora);
+    expect(r.tna_interes).toBe(48);
+    expect(r.arancel).toBe(2.5);
+    expect(r.tna_aplicada).toBeCloseTo(r.tna_interes + r.arancel, 10);
+  });
+
+  it("usa la tasa comitente cuando corresponde (más el arancel)", () => {
     const r = simularCheques({ ...input, modalidad: "comitente" }, TASAS, ahora);
-    expect(r.tna_aplicada).toBe(35);
+    expect(r.tna_interes).toBe(35);
+    expect(r.tna_aplicada).toBe(37.5);
     expect(r.descuento_total).toBeLessThan(
       simularCheques(input, TASAS, ahora).descuento_total
     );

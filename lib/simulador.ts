@@ -20,7 +20,7 @@ import {
 const DIAS_ANIO = 365;
 
 const DISCLAIMER_CHEQUES =
-  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. No contempla otros derechos de mercado, impuestos ni aranceles que se le cobran al vendedor del cheque. El otorgamiento depende de aprobación crediticia y no incluye gastos de sellados, certificación de firmas, etc. La tasa puede variar.";
+  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. La tasa incluye el arancel de la empresa, pero no contempla otros derechos de mercado ni impuestos que se le cobran al vendedor del cheque. El otorgamiento depende de aprobación crediticia y no incluye gastos de sellados, certificación de firmas, etc. La tasa puede variar.";
 
 /**
  * Un cheque se acredita 2 días hábiles después de su fecha de pago si ésta es
@@ -42,7 +42,9 @@ export function simularCheques(
 ): SimuladorChequesOutput {
   const servicio =
     input.modalidad === "comitente" ? "cheques_comitente" : "cheques_directo";
-  const tna = getTasaForServicio(tasas, servicio); // % anual
+  const tnaInteres = getTasaForServicio(tasas, servicio); // % anual (variable)
+  const arancel = tasas.arancel_cheques; // % anual (arancel empresa, fijo)
+  const tna = tnaInteres + arancel; // TNA total que paga el vendedor
   const fechaPago = parseISODate(input.fecha_pago);
 
   // El descuento corre hasta la fecha estimada de acreditación (no hasta la
@@ -56,7 +58,9 @@ export function simularCheques(
   return {
     monto_a_recibir: round2(monto_a_recibir),
     descuento_total: round2(descuento),
-    tna_aplicada: tna,
+    tna_aplicada: round2(tna),
+    tna_interes: tnaInteres,
+    arancel,
     modalidad: input.modalidad,
     dias_considerados: dias,
     fecha_acreditacion_estimada: toISODate(fechaAcreditacion),

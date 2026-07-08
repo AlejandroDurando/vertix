@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
 import { Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -51,12 +52,14 @@ export function SimuladorForm() {
   const [fieldError, setFieldError] = useState<string | undefined>();
   const [chequesResult, setChequesResult] = useState<ChequesResult | null>(null);
   const [prestamosResult, setPrestamosResult] = useState<PrestamosResult | null>(null);
+  const [fechaPago, setFechaPago] = useState("");
 
   // Fecha mínima de pago = hoy + 5 días hábiles (no se descuentan valores con menor plazo).
   const minFechaPago = useMemo(
     () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
     []
   );
+  const fechaMuyCercana = fechaPago !== "" && fechaPago < minFechaPago;
 
   function changeTipo(next: Tipo) {
     setTipo(next);
@@ -164,6 +167,7 @@ export function SimuladorForm() {
                 min={minFechaPago}
                 required
                 hint={`Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy.`}
+                onChange={(e) => setFechaPago(e.target.value)}
                 error={fe("fecha_pago")}
               />
               <Input
@@ -208,6 +212,14 @@ export function SimuladorForm() {
             </>
           )}
         </div>
+
+        {tipo === "cheques" && fechaMuyCercana && (
+          <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
+            Por este medio no podemos cotizar cheques con vencimiento menor a 5 días
+            hábiles. <Link href="/contacto" className="font-semibold underline">Comunicate con nosotros</Link>{" "}
+            y podemos ver otra manera de negociación.
+          </Alert>
+        )}
 
         {tipo === "cheques" && (
           <p className="text-xs text-vertix/60">
@@ -267,7 +279,9 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
         />
         <Row label="Días considerados" value={`${data.dias_considerados}`} />
         <Row label="Acreditación estimada" value={fmtFecha(data.fecha_acreditacion_estimada)} />
-        <Row label="Tasa aplicada (TNA)" value={`${data.tna_aplicada}%`} />
+        <Row label="Tasa de descuento (TNA)" value={`${data.tna_interes}%`} />
+        <Row label="Arancel" value={`${data.arancel}%`} />
+        <Row label="Tasa total aplicada (TNA)" value={`${data.tna_aplicada}%`} />
       </div>
       {data.bcra && (
         <div className="mt-5">

@@ -14,10 +14,12 @@ let cache: CacheEntry | null = null;
 let inflight: Promise<Tasas> | null = null;
 
 // Valores expresados como TNA (Tasa Nominal Anual) en %. La hoja "tasas" de
-// Google Sheets debe contener estos valores anuales (ej.: cheques_directo = 43).
+// Google Sheets debe contener estos valores anuales (ej.: cheques_directo = 48).
+// La tasa total de cheques que ve el cliente = tasa de descuento + arancel.
 const FALLBACK_TASAS: Tasas = {
-  cheques_directo: 43,
+  cheques_directo: 48,
   cheques_comitente: 35,
+  arancel_cheques: 2.5,
   prestamos_ph: 72,
   prestamos_pj: 82,
   actualizado_el: "fallback",
@@ -65,13 +67,18 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
 
   // Servicios reconocidos. "cheques" se acepta como alias y aplica a ambas
   // modalidades (directo y comitente) cuando no se cargan por separado.
+  // "arancel_cheques" es el arancel fijo de la empresa (se suma a la tasa) y
+  // tiene su propio rango plausible (0–50) porque es mucho menor que una TNA.
   const RECONOCIDOS = [
     "cheques",
     "cheques_directo",
     "cheques_comitente",
+    "arancel_cheques",
     "prestamos_ph",
     "prestamos_pj",
   ];
+  const ARANCEL_MIN = 0;
+  const ARANCEL_MAX = 50;
 
   const map = new Map<string, number>();
   let actualizado_el = "";
@@ -82,11 +89,13 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
     const servicio = String(servicioRaw).trim().toLowerCase();
     if (!RECONOCIDOS.includes(servicio)) continue;
     const tasa = Number(String(tasaRaw).replace(",", "."));
-    if (!Number.isFinite(tasa) || tasa <= 0) continue;
-    if (tasa < TASA_MIN || tasa > TASA_MAX) {
+    if (!Number.isFinite(tasa)) continue;
+    const [min, max] =
+      servicio === "arancel_cheques" ? [ARANCEL_MIN, ARANCEL_MAX] : [TASA_MIN, TASA_MAX];
+    if (tasa < min || tasa > max) {
       logger.warn("tasas", `Tasa fuera de rango para "${servicio}" — ignorada`, {
         tasa,
-        rango: `${TASA_MIN}-${TASA_MAX}`,
+        rango: `${min}-${max}`,
       });
       continue;
     }
@@ -97,6 +106,8 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
   const chequesAlias = map.get("cheques");
   const cheques_directo = map.get("cheques_directo") ?? chequesAlias;
   const cheques_comitente = map.get("cheques_comitente") ?? chequesAlias;
+  // El arancel es opcional en la hoja: si no está, se usa el valor vigente.
+  const arancel_cheques = map.get("arancel_cheques") ?? FALLBACK_TASAS.arancel_cheques;
   const prestamos_ph = map.get("prestamos_ph");
   const prestamos_pj = map.get("prestamos_pj");
 
@@ -114,6 +125,7 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
   return {
     cheques_directo,
     cheques_comitente,
+    arancel_cheques,
     prestamos_ph,
     prestamos_pj,
     actualizado_el: actualizado_el || new Date().toISOString().slice(0, 10),

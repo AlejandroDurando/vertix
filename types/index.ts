@@ -28,11 +28,15 @@ export type TasaServicio =
   | "prestamos_pj";
 
 // Las tasas se interpretan como TNA (Tasa Nominal Anual) expresada en porcentaje.
-// Ej.: cheques_directo = 43 → 43% anual. La hoja "tasas" de Google Sheets debe
+// Ej.: cheques_directo = 48 → 48% anual. La hoja "tasas" de Google Sheets debe
 // contener estos valores anuales.
+// La tasa total de cheques = tasa de descuento (variable) + arancel de la
+// empresa (hoy 2,5%, no suele variar). Se cargan por separado para que los
+// dueños ajusten la tasa sin tocar el arancel.
 export type Tasas = {
   cheques_directo: number;
   cheques_comitente: number;
+  arancel_cheques: number;
   prestamos_ph: number;
   prestamos_pj: number;
   actualizado_el: string;
@@ -59,7 +63,9 @@ export type BcraInfo = {
 export type SimuladorChequesOutput = {
   monto_a_recibir: number;
   descuento_total: number;
-  tna_aplicada: number; // % anual
+  tna_aplicada: number; // % anual TOTAL (interés + arancel)
+  tna_interes: number; // % anual, componente de descuento (variable)
+  arancel: number; // % anual, arancel de la empresa (fijo)
   modalidad: ModalidadCheque;
   dias_considerados: number;
   fecha_acreditacion_estimada: string; // YYYY-MM-DD (fecha_pago + 2/3 hábiles)

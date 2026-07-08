@@ -136,10 +136,13 @@ if (missingRows.length > 0) {
 }
 
 ok("Filas de servicio presentes");
+const arancel = map.has("arancel_cheques") ? map.get("arancel_cheques") : 2.5;
+const arancelOrigen = map.has("arancel_cheques") ? "" : " (default, no está en la hoja)";
 console.log("");
 console.log(c.bold("Tasas leídas (TNA anual):"));
-console.log(c.dim("  cheques_directo    → ") + c.yellow(`${chequesDirecto}%`));
-console.log(c.dim("  cheques_comitente  → ") + c.yellow(`${chequesComitente}%`));
+console.log(c.dim("  cheques_directo    → ") + c.yellow(`${chequesDirecto}%`) + c.dim(` + arancel = ${chequesDirecto + arancel}% total`));
+console.log(c.dim("  cheques_comitente  → ") + c.yellow(`${chequesComitente}%`) + c.dim(` + arancel = ${chequesComitente + arancel}% total`));
+console.log(c.dim("  arancel_cheques    → ") + c.yellow(`${arancel}%`) + c.dim(arancelOrigen));
 console.log(c.dim("  prestamos_ph       → ") + c.yellow(`${map.get("prestamos_ph")}%`));
 console.log(c.dim("  prestamos_pj       → ") + c.yellow(`${map.get("prestamos_pj")}%`));
 if (updated) console.log(c.dim("  actualizado_el     → ") + updated);

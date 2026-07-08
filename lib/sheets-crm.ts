@@ -132,6 +132,7 @@ export async function appendAlta(
       data.email_alternativo,
       data.telefono,
       data.es_pep,
+      data.domicilio_dni_actual ?? "",
       data.conyuge_nombre ?? "",
       data.conyuge_dni ?? "",
       docs,
