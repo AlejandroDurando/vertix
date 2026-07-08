@@ -93,21 +93,26 @@ describe("cuotaSistemaFrances", () => {
 });
 
 describe("simularPrestamo", () => {
-  it("aplica la tasa según el tipo de persona", () => {
-    const base = { monto: 1_000_000, plazo_meses: 12 };
-    const ph = simularPrestamo({ ...base, tipo_persona: "humana" }, TASAS);
-    const pj = simularPrestamo({ ...base, tipo_persona: "empresa" }, TASAS);
-    expect(ph.tna_aplicada).toBe(72);
-    expect(pj.tna_aplicada).toBe(82);
-    expect(pj.cuota_mensual).toBeGreaterThan(ph.cuota_mensual);
+  it("cotiza el rango entre las dos tasas de la hoja", () => {
+    const r = simularPrestamo({ monto: 1_000_000, plazo_meses: 12 }, TASAS);
+    expect(r.tna_desde).toBe(72);
+    expect(r.tna_hasta).toBe(82);
+    expect(r.cuota_mensual_hasta).toBeGreaterThan(r.cuota_mensual_desde);
   });
 
-  it("el total a pagar es cuota por plazo", () => {
+  it("ordena el rango aunque las tasas estén invertidas en la hoja", () => {
     const r = simularPrestamo(
-      { monto: 500_000, plazo_meses: 6, tipo_persona: "humana" },
-      TASAS
+      { monto: 1_000_000, plazo_meses: 12 },
+      { ...TASAS, prestamos_ph: 82, prestamos_pj: 72 }
     );
-    expect(r.total_a_pagar).toBeCloseTo(r.cuota_mensual * 6, 1);
-    expect(r.total_intereses).toBeCloseTo(r.total_a_pagar - 500_000, 1);
+    expect(r.tna_desde).toBe(72);
+    expect(r.tna_hasta).toBe(82);
+  });
+
+  it("el total a pagar es cuota por plazo en ambos extremos", () => {
+    const r = simularPrestamo({ monto: 500_000, plazo_meses: 6 }, TASAS);
+    expect(r.total_a_pagar_desde).toBeCloseTo(r.cuota_mensual_desde * 6, 1);
+    expect(r.total_a_pagar_hasta).toBeCloseTo(r.cuota_mensual_hasta * 6, 1);
+    expect(r.total_intereses_desde).toBeCloseTo(r.total_a_pagar_desde - 500_000, 1);
   });
 });

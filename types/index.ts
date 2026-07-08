@@ -75,18 +75,24 @@ export type SimuladorChequesOutput = {
 };
 
 // --- Simulador: préstamos ---
+// La tasa final depende del solicitante y de condiciones de mercado (cauciones,
+// intereses bancarios), no del tipo de persona: el simulador muestra un RANGO
+// entre las dos tasas cargadas en la hoja (prestamos_ph y prestamos_pj actúan
+// como extremos del rango).
 export type SimuladorPrestamosInput = {
   monto: number;
   plazo_meses: number;
-  tipo_persona: TipoPersona;
 };
 
 export type SimuladorPrestamosOutput = {
-  cuota_mensual: number;
-  total_a_pagar: number;
-  total_intereses: number;
-  tna_aplicada: number; // % anual
-  tasa_mensual: number; // % mensual
+  cuota_mensual_desde: number;
+  cuota_mensual_hasta: number;
+  total_a_pagar_desde: number;
+  total_a_pagar_hasta: number;
+  total_intereses_desde: number;
+  total_intereses_hasta: number;
+  tna_desde: number; // % anual
+  tna_hasta: number; // % anual
   disclaimer: string;
 };
 

@@ -20,10 +20,6 @@ type Tipo = "cheques" | "prestamos";
 type ChequesResult = SimuladorChequesOutput;
 type PrestamosResult = SimuladorPrestamosOutput;
 
-const TIPO_PERSONA = [
-  { value: "humana", label: "Persona humana" },
-  { value: "empresa", label: "Empresa" },
-];
 const INSTRUMENTO = [
   { value: "cheque", label: "Cheque" },
   { value: "echeq", label: "Echeq" },
@@ -101,7 +97,6 @@ export function SimuladorForm() {
         tipo,
         monto: Number(raw.monto),
         plazo_meses: Number(raw.plazo_meses),
-        tipo_persona: String(raw.tipo_persona),
       };
       const res = await postJson<PrestamosResult>("/api/simulador", payload);
       setSubmitting(false);
@@ -189,27 +184,16 @@ export function SimuladorForm() {
               />
             </>
           ) : (
-            <>
-              <Input
-                name="plazo_meses"
-                label="Plazo (meses)"
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max="120"
-                required
-                error={fe("plazo_meses")}
-              />
-              <Select
-                name="tipo_persona"
-                label="Tipo de persona"
-                options={TIPO_PERSONA}
-                placeholder="Seleccionar..."
-                defaultValue=""
-                required
-                error={fe("tipo_persona")}
-              />
-            </>
+            <Input
+              name="plazo_meses"
+              label="Plazo (meses)"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="120"
+              required
+              error={fe("plazo_meses")}
+            />
           )}
         </div>
 
@@ -331,17 +315,31 @@ function BcraRow({ titulo, info }: { titulo: string; info: BcraInfo }) {
 }
 
 function PrestamosResultCard({ data }: { data: PrestamosResult }) {
+  const rango = (desde: number, hasta: number, fmt: (n: number) => string) =>
+    desde === hasta ? fmt(desde) : `${fmt(desde)} – ${fmt(hasta)}`;
+
   return (
     <ResultCard>
       <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-vertix/60">
-        Resultado
+        Resultado estimado
       </h3>
       <div className="divide-y divide-vertix/10">
-        <Row label="Cuota mensual" value={ARS.format(data.cuota_mensual)} />
-        <Row label="Total a pagar" value={ARS.format(data.total_a_pagar)} />
-        <Row label="Total intereses" value={ARS.format(data.total_intereses)} />
-        <Row label="Tasa aplicada (TNA)" value={`${data.tna_aplicada}%`} />
-        <Row label="Tasa mensual" value={`${data.tasa_mensual}%`} />
+        <Row
+          label="Cuota mensual"
+          value={rango(data.cuota_mensual_desde, data.cuota_mensual_hasta, ARS.format)}
+        />
+        <Row
+          label="Total a pagar"
+          value={rango(data.total_a_pagar_desde, data.total_a_pagar_hasta, ARS.format)}
+        />
+        <Row
+          label="Total intereses"
+          value={rango(data.total_intereses_desde, data.total_intereses_hasta, ARS.format)}
+        />
+        <Row
+          label="Tasa (TNA)"
+          value={rango(data.tna_desde, data.tna_hasta, (n) => `${n}%`)}
+        />
       </div>
       <p className="mt-4 text-xs text-vertix/60">{data.disclaimer}</p>
     </ResultCard>

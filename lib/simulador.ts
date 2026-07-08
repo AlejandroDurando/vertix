@@ -31,7 +31,7 @@ export function fechaAcreditacionEstimada(fechaPago: Date): Date {
 }
 
 const DISCLAIMER_PRESTAMOS =
-  "Cotización orientativa. No incluye impuestos ni otros gastos propios del crédito a otorgar (sellados, certificación de firmas, etc.). El otorgamiento depende de aprobación crediticia y la tasa final puede variar.";
+  "Cotización orientativa. La tasa final depende de la evaluación crediticia del solicitante y de condiciones de mercado (tasas de caución e intereses bancarios), por eso se muestra un rango. No incluye impuestos ni otros gastos propios del crédito a otorgar (sellados, certificación de firmas, etc.). El otorgamiento depende de aprobación crediticia.";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -72,20 +72,29 @@ export function simularPrestamo(
   input: SimuladorPrestamosInput,
   tasas: Tasas
 ): SimuladorPrestamosOutput {
-  const tasaServicio = input.tipo_persona === "humana" ? "prestamos_ph" : "prestamos_pj";
-  const tna = getTasaForServicio(tasas, tasaServicio); // % anual
-  const tasaMensual = tna / 100 / 12; // fracción mensual
+  // La tasa depende del solicitante y del mercado, no del tipo de persona:
+  // se cotiza el rango entre las dos tasas cargadas en la hoja.
+  const tnaDesde = Math.min(tasas.prestamos_ph, tasas.prestamos_pj);
+  const tnaHasta = Math.max(tasas.prestamos_ph, tasas.prestamos_pj);
 
-  const cuota = cuotaSistemaFrances(input.monto, tasaMensual, input.plazo_meses);
-  const total = cuota * input.plazo_meses;
-  const intereses = total - input.monto;
+  const escenario = (tna: number) => {
+    const cuota = cuotaSistemaFrances(input.monto, tna / 100 / 12, input.plazo_meses);
+    const total = cuota * input.plazo_meses;
+    return { cuota, total, intereses: total - input.monto };
+  };
+
+  const desde = escenario(tnaDesde);
+  const hasta = escenario(tnaHasta);
 
   return {
-    cuota_mensual: round2(cuota),
-    total_a_pagar: round2(total),
-    total_intereses: round2(intereses),
-    tna_aplicada: tna,
-    tasa_mensual: round2(tasaMensual * 100),
+    cuota_mensual_desde: round2(desde.cuota),
+    cuota_mensual_hasta: round2(hasta.cuota),
+    total_a_pagar_desde: round2(desde.total),
+    total_a_pagar_hasta: round2(hasta.total),
+    total_intereses_desde: round2(desde.intereses),
+    total_intereses_hasta: round2(hasta.intereses),
+    tna_desde: tnaDesde,
+    tna_hasta: tnaHasta,
     disclaimer: DISCLAIMER_PRESTAMOS,
   };
 }

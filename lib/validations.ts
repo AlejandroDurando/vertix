@@ -131,6 +131,8 @@ export const simuladorChequesSchema = z
     }
   });
 
+// La tasa del préstamo no depende del tipo de persona (se cotiza un rango),
+// así que el simulador ya no lo pide.
 export const simuladorPrestamosSchema = z.object({
   tipo: z.literal("prestamos"),
   monto: montoSchema,
@@ -139,7 +141,6 @@ export const simuladorPrestamosSchema = z.object({
     .int("El plazo debe ser un número entero")
     .min(1, "El plazo mínimo es 1 mes")
     .max(120, "El plazo máximo es 120 meses"),
-  tipo_persona: z.enum(["humana", "empresa"]),
 });
 
 export type SimuladorInput =
