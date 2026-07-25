@@ -88,10 +88,9 @@ rechaza en simulador y precalificación.
 | **Google Sheets — tasas** | Activo. `GOOGLE_SHEETS_ID`, pestaña `tasas`. La service account tiene **solo Lector** acá: no se puede escribir por API. |
 | **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. |
 | **Resend (email)** | Activo para la casilla interna. Los emails de confirmación al solicitante **no llegan a externos** hasta verificar el dominio `vertix.com.ar` en Resend (DNS). La API devuelve `confirmacion_enviada` para chequearlo. |
-| **BCRA Central de Deudores** | Activo, API pública sin key. Toggle `BCRA_CHECK_ENABLED=false` para desactivar. |
+| **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
+| **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |
 | **HubSpot** | **Inactivo.** `lib/hubspot.ts` es un stub: la lógica real está comentada y espera `HUBSPOT_API_KEY`. Se llama desde contacto y precalificación pero devuelve `disabled`. |
-| **n8n** | ❓ **No existe en el código.** Aparece solo como idea en un documento del cliente ("Destino: n8n → Google Sheets"). No sé si sigue en pie — **confirmar antes de asumir que hay que integrarlo**. |
-| **WhatsApp** | ❓ **No existe en el código ni fue pedido.** Solo aparece un número de WhatsApp en material institucional de Sailing. **Falta info** sobre si se planea alguna integración. |
 
 ⚠️ El CRM tiene filas de prueba que empiezan con **`EJEMPLO`** en las 4 pestañas (carga de
 verificación). Borrarlas cuando ya no sirvan.
@@ -131,7 +130,6 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Falta información / a confirmar
 
-- ¿n8n y WhatsApp entran en el alcance? Hoy no existen en el repo (ver tabla).
 - Tasas por instrumento (echeq / FCE / cheque físico) — las debe Martín.
 - Teléfono de contacto para la leyenda de <5 días hábiles.
 - ¿El descuento se calcula hasta la acreditación (como está) o hasta la fecha de pago?
