@@ -49,6 +49,8 @@ describe("simularCheques", () => {
     const r = simularCheques(input, TASAS, ahora);
     // Acreditación: 2026-01-14 → 9 días calendario desde el 05.
     expect(r.fecha_acreditacion_estimada).toBe("2026-01-14");
+    // El vendedor cobra el día de la operación, no cuando se acredita el comprador.
+    expect(r.fecha_acreditacion_vendedor).toBe("2026-01-05");
     expect(r.dias_considerados).toBe(9);
     // 1.000.000 * (48% + 2,5%) * 9/365
     expect(r.descuento_total).toBeCloseTo(12452.05, 2);

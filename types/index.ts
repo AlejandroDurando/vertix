@@ -68,7 +68,10 @@ export type SimuladorChequesOutput = {
   arancel: number; // % anual, arancel de la empresa (fijo)
   modalidad: ModalidadCheque;
   dias_considerados: number;
+  // El comprador se acredita el cheque 2/3 días hábiles después de la fecha de
+  // pago; el vendedor cobra el día de la operación.
   fecha_acreditacion_estimada: string; // YYYY-MM-DD (fecha_pago + 2/3 hábiles)
+  fecha_acreditacion_vendedor: string; // YYYY-MM-DD (día de la simulación)
   disclaimer: string;
   // Verificación BCRA de los CUIT cargados (siempre presente).
   bcra?: { librador: BcraInfo; endosatario: BcraInfo };

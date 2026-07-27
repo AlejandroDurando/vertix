@@ -146,13 +146,12 @@ verificación). Borrarlas cuando ya no sirvan.
   físico y FCE, y definir si esos tres valores son sólo los de cuenta comitente.
 - **Teléfono de contacto**: la leyenda de cheques con vencimiento <5 días hábiles debe invitar a
   llamar. Hoy linkea a `/contacto` porque **no definieron el número** (ni si es llamada o WhatsApp).
-- **Modalidad atada al instrumento**: el cliente pidió que el cheque físico sólo se pueda operar
-  "directo con Vertix" (en el mercado sólo se negocian echeq y FCE). **No implementado**: falta
-  confirmar si, al revés, un echeq puede ir directo — si no puede, el selector de modalidad sobra
-  porque se deduce del instrumento.
-- **Acreditación comprador vs. vendedor**: la fecha que hoy muestra el resultado es la del
-  comprador; el vendedor cobra el día de la simulación. Falta mostrar las dos y definir sobre qué
-  días corre el interés (ver el punto de abajo sobre la fecha de acreditación).
+- **Modalidad atada al instrumento**: el cheque físico ya está restringido a "directo con Vertix"
+  (`instrumentoSoloDirecto`). Falta confirmar lo inverso — si un echeq puede ir directo. Si no
+  puede, el selector de modalidad sobra porque se deduce del instrumento.
+- **Sobre qué días corre el descuento**: el resultado ya muestra las dos acreditaciones (vendedor =
+  día de la operación, comprador = fecha de pago + 2/3 hábiles), pero el interés se sigue
+  calculando hasta la del comprador. Falta que el cliente defina si es correcto.
 - **Nota EPYME en Word**: piden que no aparezcan el encabezado y el pie del navegador al imprimir, y
   proponen un `.docx` con "XXXX" en los campos a completar. **No implementado**: hay que decidir
   entre eso (pierde el pre-llenado) o generar el archivo en el servidor.

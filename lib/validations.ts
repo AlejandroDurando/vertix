@@ -18,6 +18,15 @@ export const MIN_DIAS_HABILES = 5;
 export const modalidadRequiereMinDias = (m: ModalidadCheque) => m === "comitente";
 export const instrumentoRequiereMinDias = (i: InstrumentoCheque) => i !== "cheque";
 
+/**
+ * En el mercado de capitales sólo se negocian echeq y FCE: el cheque físico se
+ * opera únicamente directo con Vertix.
+ */
+export const instrumentoSoloDirecto = (i: InstrumentoCheque) => i === "cheque";
+
+export const MSG_CHEQUE_SOLO_DIRECTO =
+  'El cheque físico se opera únicamente en forma directa con Vertix: en el mercado de capitales sólo se negocian echeq y FCE. Elegí "Directo con Vertix" o cambiá el instrumento.';
+
 export function cumpleMinDiasHabiles(fechaISO: string, ahora: Date = hoy()): boolean {
   return diasHabilesEntre(ahora, parseISODate(fechaISO)) >= MIN_DIAS_HABILES;
 }
@@ -155,6 +164,15 @@ export const simuladorChequesSchema = z
         message:
           "El librador y el endosatario no pueden coincidir: no se descuentan cheques propios.",
       });
+    }
+
+    if (instrumentoSoloDirecto(data.instrumento) && data.modalidad === "comitente") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modalidad"],
+        message: MSG_CHEQUE_SOLO_DIRECTO,
+      });
+      return; // el mínimo de días no aplica a una combinación inválida
     }
 
     if (

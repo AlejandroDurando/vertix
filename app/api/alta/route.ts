@@ -83,7 +83,15 @@ export async function POST(req: NextRequest) {
   // Adjuntos obligatorios según tipo y condiciones.
   const required: string[] = [];
   if (data.tipo === "fisica") {
-    required.push("dni_frente", "dni_dorso", "constancia_cbu", "nota_epyme_firmada");
+    // La selfie con DNI se pide en toda alta de persona física, no sólo en
+    // Sailing (pedido del cliente, 25/07/2026).
+    required.push(
+      "dni_frente",
+      "dni_dorso",
+      "constancia_cbu",
+      "selfie_dni",
+      "nota_epyme_firmada"
+    );
     if (data.estado_civil === "casado") {
       required.push("conyuge_dni_frente", "conyuge_dni_dorso");
     }
@@ -94,7 +102,7 @@ export async function POST(req: NextRequest) {
     }
     // Requisitos adicionales de Sailing para personas físicas.
     if (data.alyc === "sailing") {
-      required.push("selfie_dni", "foto_aleatoria");
+      required.push("foto_aleatoria");
       // Servicio a nombre del titular sólo si el domicilio del DNI no es el actual.
       if (data.domicilio_dni_actual === "no") {
         required.push("servicio_titular");

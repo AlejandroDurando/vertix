@@ -123,10 +123,10 @@ export function AltaForm() {
             adminCuit: field(fd, "referente_cuit"),
             adminTelefono: field(fd, "referente_telefono"),
             adminDomicilioLegal: field(fd, "domicilio_legal"),
-            adminCargo: field(fd, "referente_cargo") || "Representante legal",
+            adminCargo: field(fd, "referente_cargo") || "XXXX",
             firmante: field(fd, "razon_social"),
             firmanteCuit: field(fd, "cuit"),
-            firmanteCargo: field(fd, "referente_cargo") || "Representante legal",
+            firmanteCargo: field(fd, "referente_cargo") || "XXXX",
           });
 
     const w = window.open("", "_blank");
@@ -330,6 +330,14 @@ function FisicaFields({
         <FileInput name="dni_frente" label="DNI (frente)" required accept={ACCEPT} error={fe("dni_frente")} />
         <FileInput name="dni_dorso" label="DNI (dorso)" required accept={ACCEPT} error={fe("dni_dorso")} />
         <FileInput name="constancia_cbu" label="Constancia de CBU" required accept={ACCEPT} error={fe("constancia_cbu")} />
+        <FileInput
+          name="selfie_dni"
+          label="Foto selfie con DNI"
+          required
+          accept={ACCEPT}
+          hint="Sostené el DNI junto a tu cara, que se lean los datos."
+          error={fe("selfie_dni")}
+        />
         {regimenSimplificado === "si" && (
           <FileInput
             name="constancia_regimen_simplificado"
@@ -341,13 +349,6 @@ function FisicaFields({
         )}
         {sailing && (
           <>
-            <FileInput
-              name="selfie_dni"
-              label="Foto selfie con DNI"
-              required
-              accept={ACCEPT}
-              error={fe("selfie_dni")}
-            />
             <FileInput
               name="foto_aleatoria"
               label="Foto aleatoria"

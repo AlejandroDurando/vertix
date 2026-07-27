@@ -66,6 +66,9 @@ export function simularCheques(
     modalidad: input.modalidad,
     dias_considerados: dias,
     fecha_acreditacion_estimada: toISODate(fechaAcreditacion),
+    // Quien vende el cheque cobra el día de la operación; la acreditación
+    // calculada arriba es la del comprador.
+    fecha_acreditacion_vendedor: toISODate(ahora),
     disclaimer: DISCLAIMER_CHEQUES,
   };
 }

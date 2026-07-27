@@ -44,8 +44,13 @@ const precalificacion = (over: Record<string, unknown>) =>
   });
 
 describe("simulador de cheques — mínimo de días hábiles por modalidad", () => {
+  // La cuenta comitente sólo admite echeq/FCE, así que se combina con echeq.
   it("bloquea con cuenta comitente si faltan menos de 5 días hábiles", () => {
-    const res = simulador({ modalidad: "comitente", fecha_pago: manana });
+    const res = simulador({
+      instrumento: "echeq",
+      modalidad: "comitente",
+      fecha_pago: manana,
+    });
     expect(res.success).toBe(false);
     if (!res.success) {
       expect(res.error.issues[0].path).toEqual(["fecha_pago"]);
@@ -56,8 +61,37 @@ describe("simulador de cheques — mínimo de días hábiles por modalidad", () 
     expect(simulador({ modalidad: "directo", fecha_pago: manana }).success).toBe(true);
   });
 
+  it("permite echeq directo con Vertix con vencimiento corto", () => {
+    expect(
+      simulador({ instrumento: "echeq", modalidad: "directo", fecha_pago: manana })
+        .success
+    ).toBe(true);
+  });
+
   it("permite cuenta comitente con vencimiento suficiente", () => {
-    expect(simulador({ modalidad: "comitente" }).success).toBe(true);
+    expect(simulador({ instrumento: "echeq", modalidad: "comitente" }).success).toBe(
+      true
+    );
+  });
+});
+
+describe("simulador de cheques — instrumento y modalidad", () => {
+  // En el mercado de capitales sólo se negocian echeq y FCE.
+  it("rechaza el cheque físico con cuenta comitente", () => {
+    const res = simulador({ instrumento: "cheque", modalidad: "comitente" });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["modalidad"]);
+    }
+  });
+
+  it("acepta el cheque físico directo con Vertix", () => {
+    expect(simulador({ instrumento: "cheque", modalidad: "directo" }).success).toBe(true);
+  });
+
+  it("acepta echeq y FCE con cuenta comitente", () => {
+    expect(simulador({ instrumento: "echeq", modalidad: "comitente" }).success).toBe(true);
+    expect(simulador({ instrumento: "fce", modalidad: "comitente" }).success).toBe(true);
   });
 });
 
