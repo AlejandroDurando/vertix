@@ -9,9 +9,10 @@ import { Tabs } from "@/components/ui/Tabs";
 import { postJson } from "@/lib/api-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { formatearCuit } from "@/lib/cuit";
-import { MIN_DIAS_HABILES } from "@/lib/validations";
+import { MIN_DIAS_HABILES, modalidadRequiereMinDias } from "@/lib/validations";
 import type {
   BcraInfo,
+  ModalidadCheque,
   SimuladorChequesOutput,
   SimuladorPrestamosOutput,
 } from "@/types";
@@ -49,13 +50,16 @@ export function SimuladorForm() {
   const [chequesResult, setChequesResult] = useState<ChequesResult | null>(null);
   const [prestamosResult, setPrestamosResult] = useState<PrestamosResult | null>(null);
   const [fechaPago, setFechaPago] = useState("");
+  const [modalidad, setModalidad] = useState<ModalidadCheque>("directo");
 
-  // Fecha mínima de pago = hoy + 5 días hábiles (no se descuentan valores con menor plazo).
+  // El mínimo de 5 días hábiles lo exige el mercado de capitales: sólo rige
+  // para la cuenta comitente. Directo con Vertix se puede operar con menos.
+  const exigeMinDias = modalidadRequiereMinDias(modalidad);
   const minFechaPago = useMemo(
     () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
     []
   );
-  const fechaMuyCercana = fechaPago !== "" && fechaPago < minFechaPago;
+  const fechaMuyCercana = exigeMinDias && fechaPago !== "" && fechaPago < minFechaPago;
 
   function changeTipo(next: Tipo) {
     setTipo(next);
@@ -150,7 +154,8 @@ export function SimuladorForm() {
                 label="Modalidad"
                 options={MODALIDAD}
                 placeholder="Seleccionar..."
-                defaultValue="directo"
+                value={modalidad}
+                onChange={(e) => setModalidad(e.target.value as ModalidadCheque)}
                 required
                 hint="Con cuenta comitente la tasa es más baja."
                 error={fe("modalidad")}
@@ -159,9 +164,13 @@ export function SimuladorForm() {
                 name="fecha_pago"
                 label="Fecha de pago del cheque"
                 type="date"
-                min={minFechaPago}
+                min={exigeMinDias ? minFechaPago : undefined}
                 required
-                hint={`Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy.`}
+                hint={
+                  exigeMinDias
+                    ? `Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy (lo exige el mercado de capitales).`
+                    : undefined
+                }
                 onChange={(e) => setFechaPago(e.target.value)}
                 error={fe("fecha_pago")}
               />
@@ -199,9 +208,11 @@ export function SimuladorForm() {
 
         {tipo === "cheques" && fechaMuyCercana && (
           <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
-            Por este medio no podemos cotizar cheques con vencimiento menor a 5 días
-            hábiles. <Link href="/contacto" className="font-semibold underline">Comunicate con nosotros</Link>{" "}
-            y podemos ver otra manera de negociación.
+            Con cuenta comitente no podemos tomar valores con vencimiento menor a 5
+            días hábiles: lo exige el mercado de capitales. Probá con{" "}
+            <strong>Directo con Vertix</strong> o{" "}
+            <Link href="/contacto" className="font-semibold underline">comunicate con nosotros</Link>{" "}
+            para ver otra manera de negociación.
           </Alert>
         )}
 

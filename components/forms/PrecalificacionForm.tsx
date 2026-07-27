@@ -8,11 +8,17 @@ import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
 import { postForm } from "@/lib/api-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
-import { MIN_DIAS_HABILES } from "@/lib/validations";
+import { MIN_DIAS_HABILES, instrumentoRequiereMinDias } from "@/lib/validations";
+import type { InstrumentoCheque } from "@/types";
 
 type Servicio = "cheques" | "prestamos";
 type TipoPrestamo = "personal" | "prendario";
 
+const INSTRUMENTO = [
+  { value: "cheque", label: "Cheque" },
+  { value: "echeq", label: "Echeq" },
+  { value: "fce", label: "FCE (Factura de Crédito Electrónica)" },
+];
 const TIPO_PERSONA = [
   { value: "humana", label: "Persona humana" },
   { value: "empresa", label: "Empresa" },
@@ -37,13 +43,17 @@ export function PrecalificacionForm() {
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | undefined>();
   const [fechaPago, setFechaPago] = useState("");
+  const [instrumento, setInstrumento] = useState<InstrumentoCheque>("cheque");
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Los 5 días hábiles los exige el mercado de capitales, donde se negocian
+  // echeq y FCE. El cheque físico se puede vender por fuera, sin ese piso.
+  const exigeMinDias = instrumentoRequiereMinDias(instrumento);
   const minFechaPago = useMemo(
     () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
     []
   );
-  const fechaMuyCercana = fechaPago !== "" && fechaPago < minFechaPago;
+  const fechaMuyCercana = exigeMinDias && fechaPago !== "" && fechaPago < minFechaPago;
 
   function changeServicio(next: Servicio) {
     setServicio(next);
@@ -121,6 +131,17 @@ export function PrecalificacionForm() {
                 hint="Si sos persona física, escribí “Titular” o tu nombre."
                 error={fe("empresa")}
               />
+              <Select
+                name="instrumento"
+                label="Instrumento"
+                required
+                options={INSTRUMENTO}
+                placeholder="Seleccionar..."
+                value={instrumento}
+                onChange={(e) => setInstrumento(e.target.value as InstrumentoCheque)}
+                hint="El cheque físico se negocia directo con Vertix; el echeq y la FCE, en el mercado de capitales."
+                error={fe("instrumento")}
+              />
               <Input
                 name="monto_cheque"
                 label="Monto del cheque (ARS)"
@@ -136,8 +157,12 @@ export function PrecalificacionForm() {
                 label="Fecha de pago del cheque"
                 required
                 type="date"
-                min={minFechaPago}
-                hint={`Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy.`}
+                min={exigeMinDias ? minFechaPago : undefined}
+                hint={
+                  exigeMinDias
+                    ? `Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy (lo exige el mercado de capitales).`
+                    : undefined
+                }
                 onChange={(e) => setFechaPago(e.target.value)}
                 error={fe("fecha_pago")}
               />
@@ -224,9 +249,11 @@ export function PrecalificacionForm() {
 
         {servicio === "cheques" && fechaMuyCercana && (
           <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
-            Por este medio no podemos tomar cheques con vencimiento menor a 5 días
-            hábiles. <Link href="/contacto" className="font-semibold underline">Comunicate con nosotros</Link>{" "}
-            y podemos ver otra manera de negociación.
+            Los echeq y las FCE se negocian en el mercado de capitales, que exige un
+            vencimiento mínimo de 5 días hábiles. Si es un cheque físico, elegí{" "}
+            <strong>Cheque</strong> como instrumento; si no,{" "}
+            <Link href="/contacto" className="font-semibold underline">comunicate con nosotros</Link>{" "}
+            y vemos otra manera de negociación.
           </Alert>
         )}
 

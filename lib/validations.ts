@@ -1,9 +1,30 @@
 import { z } from "zod";
 import { esCuitValido, normalizarCuit } from "./cuit";
 import { diasHabilesEntre, hoy, parseISODate } from "./fechas";
+import type { InstrumentoCheque, ModalidadCheque } from "@/types";
 
 /** Días hábiles mínimos entre hoy y la fecha de pago del cheque. */
 export const MIN_DIAS_HABILES = 5;
+
+/**
+ * El mínimo de días hábiles lo impone el mercado de capitales, así que sólo
+ * aplica a lo que se negocia ahí. Por fuera (directo con Vertix) se pueden
+ * tomar valores con menor plazo de vencimiento.
+ *
+ * - Simulador: se decide por modalidad (comitente = mercado).
+ * - Precalificación: no pide modalidad, se decide por instrumento (echeq y FCE
+ *   sólo se negocian en el mercado; el cheque físico se puede vender por fuera).
+ */
+export const modalidadRequiereMinDias = (m: ModalidadCheque) => m === "comitente";
+export const instrumentoRequiereMinDias = (i: InstrumentoCheque) => i !== "cheque";
+
+export function cumpleMinDiasHabiles(fechaISO: string, ahora: Date = hoy()): boolean {
+  return diasHabilesEntre(ahora, parseISODate(fechaISO)) >= MIN_DIAS_HABILES;
+}
+
+export const MSG_MIN_DIAS_COMITENTE = `Con cuenta comitente no podemos tomar valores con vencimiento menor a ${MIN_DIAS_HABILES} días hábiles. Elegí "Directo con Vertix" o comunicate con nosotros para ver otra manera de negociación.`;
+
+export const MSG_MIN_DIAS_INSTRUMENTO = `Los echeq y las FCE se negocian en el mercado de capitales, que exige un vencimiento mínimo de ${MIN_DIAS_HABILES} días hábiles. Si se trata de un cheque físico seleccioná "Cheque"; si no, comunicate con nosotros.`;
 
 const trimmed = (max: number, min = 1) =>
   z.string().trim().min(min).max(max);
@@ -35,11 +56,6 @@ const fechaSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida (formato YYYY-MM-DD)")
   .refine((v) => !Number.isNaN(parseISODate(v).getTime()), "Fecha inválida");
 
-const fechaPagoChequeSchema = fechaSchema.refine(
-  (v) => diasHabilesEntre(hoy(), parseISODate(v)) >= MIN_DIAS_HABILES,
-  `Por este medio no se descuentan cheques con vencimiento menor a ${MIN_DIAS_HABILES} días hábiles. Comunicate con nosotros y podemos ver otra manera de negociación.`
-);
-
 const montoSchema = z
   .number({ invalid_type_error: "Monto inválido" })
   .positive("El monto debe ser mayor a 0")
@@ -64,8 +80,9 @@ export const precalificacionChequesSchema = z.object({
   email: emailSchema,
   telefono: telefonoSchema,
   empresa: trimmed(160), // PF: "Titular" o su nombre
+  instrumento: z.enum(["cheque", "echeq", "fce"]),
   monto_cheque: montoSchema,
-  fecha_pago: fechaPagoChequeSchema,
+  fecha_pago: fechaSchema,
   banco_emisor: trimmed(120),
   cuit_librador: cuitSchema,
   cuit_endosatario: cuitSchema,
@@ -94,15 +111,25 @@ export const precalificacionSchema = z
     precalificacionPrestamosSchema,
   ])
   .superRefine((data, ctx) => {
-    if (
-      data.servicio === "cheques" &&
-      normalizarCuit(data.cuit_librador) === normalizarCuit(data.cuit_endosatario)
-    ) {
+    if (data.servicio !== "cheques") return;
+
+    if (normalizarCuit(data.cuit_librador) === normalizarCuit(data.cuit_endosatario)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["cuit_endosatario"],
         message:
           "El librador y el endosatario no pueden coincidir: no se descuentan cheques propios.",
+      });
+    }
+
+    if (
+      instrumentoRequiereMinDias(data.instrumento) &&
+      !cumpleMinDiasHabiles(data.fecha_pago)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["fecha_pago"],
+        message: MSG_MIN_DIAS_INSTRUMENTO,
       });
     }
   });
@@ -114,7 +141,7 @@ export const simuladorChequesSchema = z
   .object({
     tipo: z.literal("cheques"),
     monto: montoSchema,
-    fecha_pago: fechaPagoChequeSchema,
+    fecha_pago: fechaSchema,
     modalidad: z.enum(["directo", "comitente"]),
     instrumento: z.enum(["cheque", "echeq", "fce"]),
     cuit_librador: cuitSchema,
@@ -127,6 +154,17 @@ export const simuladorChequesSchema = z
         path: ["cuit_endosatario"],
         message:
           "El librador y el endosatario no pueden coincidir: no se descuentan cheques propios.",
+      });
+    }
+
+    if (
+      modalidadRequiereMinDias(data.modalidad) &&
+      !cumpleMinDiasHabiles(data.fecha_pago)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["fecha_pago"],
+        message: MSG_MIN_DIAS_COMITENTE,
       });
     }
   });
@@ -207,6 +245,9 @@ export const altaPersonaFisicaSchema = z
     codigo_postal: requerido(12),
     profesion: requerido(160),
     es_autonomo: siNo,
+    // Régimen Simplificado de DDJJ de Impuesto a las Ganancias (no es el
+    // régimen general). Si adhiere, debe adjuntar la constancia de adhesión.
+    regimen_simplificado_ganancias: siNo,
     cbu: cbuSchema,
     email: emailSchema,
     email_alternativo: emailSchema,

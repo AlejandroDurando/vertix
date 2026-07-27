@@ -157,6 +157,7 @@ const CAMPO_LABELS: Record<string, string> = {
   email: "Email",
   telefono: "Teléfono",
   empresa: "Empresa",
+  instrumento: "Instrumento",
   monto_cheque: "Monto del cheque",
   fecha_pago: "Fecha de pago",
   banco_emisor: "Banco emisor",

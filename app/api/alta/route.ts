@@ -18,6 +18,7 @@ const FILE_FIELDS = [
   "constancia_cbu",
   "conyuge_dni_frente",
   "conyuge_dni_dorso",
+  "constancia_regimen_simplificado",
   "nota_epyme_firmada",
   // Persona física — requisitos adicionales de Sailing
   "selfie_dni",
@@ -39,6 +40,8 @@ const LABELS: Record<string, string> = {
   constancia_cbu: "Constancia de CBU",
   conyuge_dni_frente: "DNI del cónyuge (frente)",
   conyuge_dni_dorso: "DNI del cónyuge (dorso)",
+  constancia_regimen_simplificado:
+    "Constancia de adhesión al Régimen Simplificado de Ganancias",
   nota_epyme_firmada: "Nota de Adhesión EPYME firmada",
   selfie_dni: "Foto selfie con DNI",
   foto_aleatoria: "Foto aleatoria (ej. palma derecha levantada)",
@@ -49,7 +52,7 @@ const LABELS: Record<string, string> = {
   constancia_cuit: "Constancia de CUIT",
   dni_socios: "DNI de los socios",
   eecc: "Estados contables (CPCE)",
-  ddjj: "Últimas 6 DDJJ de IVA e IIBB",
+  ddjj: "DDJJ de IVA de los últimos 6 meses",
 };
 
 export async function POST(req: NextRequest) {
@@ -84,6 +87,11 @@ export async function POST(req: NextRequest) {
     if (data.estado_civil === "casado") {
       required.push("conyuge_dni_frente", "conyuge_dni_dorso");
     }
+    // Régimen Simplificado de DDJJ de Ganancias: si adhiere, la constancia de
+    // adhesión es obligatoria.
+    if (data.regimen_simplificado_ganancias === "si") {
+      required.push("constancia_regimen_simplificado");
+    }
     // Requisitos adicionales de Sailing para personas físicas.
     if (data.alyc === "sailing") {
       required.push("selfie_dni", "foto_aleatoria");
@@ -100,18 +108,18 @@ export async function POST(req: NextRequest) {
       "constancia_cbu",
       "constancia_cuit",
       "dni_socios",
+      // Desde el 25/07/2026 los EECC y las DDJJ de IVA se piden juntos: ya no
+      // son alternativos ("uno u otro").
+      "eecc",
+      "ddjj",
       "nota_epyme_firmada"
     );
     if (data.tipo_societario === "sa" || data.tipo_societario === "sas") {
       required.push("registro_acciones");
     }
-    // EECC por CPCE o, en su defecto, las últimas 6 DDJJ de IVA/IIBB.
-    if (!files.eecc && !files.ddjj) {
-      return fail(
-        "Adjuntá los estados contables (CPCE) o, en su defecto, las últimas 6 DDJJ de IVA e IIBB.",
-        400,
-        "eecc"
-      );
+    // El DNI del cónyuge del firmante se adjunta igual que en persona física.
+    if (data.referente_estado_civil === "casado") {
+      required.push("conyuge_dni_frente", "conyuge_dni_dorso");
     }
   }
 

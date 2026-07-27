@@ -23,6 +23,36 @@ con dominio `www.vertix.com.ar` (sin fecha definida).
 
 **Antes de commitear**: `npm test && npm run typecheck && npm run lint && npm run build`.
 
+## Arquitectura
+
+Cuatro flujos independientes, mismo patrón de punta a punta: `app/<ruta>/page.tsx` renderiza un
+form client component de `components/forms/`, que arma un `FormData`/JSON y lo postea con
+`postJson`/`postForm` (`lib/api-client.ts`) al route handler en `app/api/<ruta>/route.ts`. El
+handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve el sobre
+`ApiResponse` (`types/index.ts`).
+
+- **`/simulador`** → `POST /api/simulador`: no persiste nada. Lee tasas (`lib/tasas.ts`, cache 1h
+  con fallback hardcodeado) y calcula con `lib/simulador.ts` (sistema francés para préstamos,
+  descuento simple para cheques). Para cheques consulta BCRA (`lib/bcra.ts`, fail-open) y arma el
+  desglose tasa + arancel de `types/index.ts` (`SimuladorChequesOutput`).
+- **`/contacto` y `/precalificacion`** → JSON body. Validan con `parseSimulador`/schemas de
+  `lib/validations.ts`, escriben la fila en el CRM (`lib/sheets-crm.ts`, pestañas `Contacto` /
+  `Precalificacion`) y mandan el email interno (`lib/email.ts`) en paralelo con `Promise.all`.
+- **`/alta`** (AdCap/Sailing) → `multipart/form-data` porque lleva adjuntos. `lib/uploads.ts`
+  separa campos de archivos (valida tipo/tamaño, decodifica a base64) de los demás; `parseAlta`
+  determina campos obligatorios según `tipo` (física/jurídica), `alyc` y condiciones (casado,
+  domicilio del DNI, adhesión al Régimen Simplificado de Ganancias en PF). En PJ los estados
+  contables y las DDJJ de IVA de los últimos 6 meses son **ambos** obligatorios desde el
+  25/07/2026 (antes eran alternativos). `lib/nota-epyme.ts` genera el HTML de la Nota de Adhesión
+  EPYME pre-llenada
+  que el usuario descarga, firma y vuelve a subir como uno de los adjuntos. Persiste en
+  `sheets-crm.ts` (pestañas `AltasPF`/`AltasPJ`) + `email.ts` (adjuntos van en el email, no se
+  guardan — ver pendiente #1 abajo) en paralelo.
+
+Todas las rutas comparten `lib/rate-limit.ts` (in-memory por IP, ver pendiente #5) y `lib/logger.ts`
+(logger JSON que redacta PII). `lib/hubspot.ts` se llama desde contacto/precalificación pero es un
+stub inactivo (ver tabla de integraciones).
+
 ## Convenciones establecidas
 
 - **Rutas API**: `export const runtime = "nodejs"` + `dynamic = "force-dynamic"`. Devuelven siempre
@@ -68,10 +98,19 @@ El resultado muestra los tres números desglosados.
 entre `prestamos_ph` y `prestamos_pj` como extremos (el código los ordena solo). Por eso el
 simulador ya **no** pide tipo de persona; la precalificación sí lo pide, como dato del lead.
 
-**BCRA bloquea el presupuesto, con fail-open.** Se consulta la Central de Deudores (API pública sin
-credenciales) para librador y endosatario: situación ≥3 bloquea, situación 2 o cheques rechazados
-advierte, y si el BCRA no responde se permite continuar (no frenar a un cliente legítimo por una
-caída del servicio). El resultado se muestra siempre, aunque esté limpio.
+**Sólo el librador bloquea el presupuesto por BCRA, con fail-open.** Se consulta la Central de
+Deudores (API pública sin credenciales) para librador y endosatario, pero **únicamente la situación
+≥3 del librador impide emitir el presupuesto**: es quien termina pagando el cheque. La del
+endosatario se informa siempre como "requiere análisis previo" (`infoBcra(..., { soloInformativo:
+true })`) y nunca traba la cotización. Situación 2 o cheques rechazados advierte; si el BCRA no
+responde se permite continuar (no frenar a un cliente legítimo por una caída del servicio).
+
+**El mínimo de 5 días hábiles de vencimiento sólo rige en el mercado de capitales.** Por fuera se
+pueden comprar valores con menor plazo, así que la regla es condicional: en el **simulador** depende
+de la modalidad (bloquea sólo `comitente`), y en la **precalificación**, que no pide modalidad,
+depende del instrumento (bloquea `echeq` y `fce`, permite el cheque físico). Los predicados viven en
+`lib/validations.ts` (`modalidadRequiereMinDias` / `instrumentoRequiereMinDias`) y los reusan los
+forms para el `min` del input date, así front y back nunca se desincronizan.
 
 **El descuento corre hasta la fecha estimada de acreditación** (+2 días hábiles si la fecha de pago
 es hábil, +3 si cae finde/feriado), no hasta la fecha de pago, porque es cuando el vendedor cobra
@@ -86,7 +125,7 @@ rechaza en simulador y precalificación.
 | Integración | Estado |
 |---|---|
 | **Google Sheets — tasas** | Activo. `GOOGLE_SHEETS_ID`, pestaña `tasas`. La service account tiene **solo Lector** acá: no se puede escribir por API. |
-| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. |
+| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `AltasPF` última = régimen simplificado. ⚠️ Los encabezados de esas dos columnas todavía hay que escribirlos en la hoja. |
 | **Resend (email)** | Activo para la casilla interna. Los emails de confirmación al solicitante **no llegan a externos** hasta verificar el dominio `vertix.com.ar` en Resend (DNS). La API devuelve `confirmacion_enviada` para chequearlo. |
 | **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
 | **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |
@@ -101,8 +140,22 @@ verificación). Borrarlas cuando ya no sirvan.
   distintas (el físico más alta). Hoy el campo `instrumento` se valida y se pide, pero **no afecta
   el cálculo** — las tres cotizan igual. Falta que Martín (Vertix) pase las tasas concretas; cuando
   lleguen hay que reestructurar la hoja con una fila por instrumento.
+- **Tasas de echeq por tramo de plazo** (25/07/2026): ≤30 días 40%, 31–60 días 43%, ≥61 días 45%,
+  siempre + 2,5% de arancel. **No implementado**: la hoja y el tipo `Tasas` son planos (una tasa por
+  servicio), hay que reestructurarlos a instrumento × tramo. Faltan además las tasas de cheque
+  físico y FCE, y definir si esos tres valores son sólo los de cuenta comitente.
 - **Teléfono de contacto**: la leyenda de cheques con vencimiento <5 días hábiles debe invitar a
   llamar. Hoy linkea a `/contacto` porque **no definieron el número** (ni si es llamada o WhatsApp).
+- **Modalidad atada al instrumento**: el cliente pidió que el cheque físico sólo se pueda operar
+  "directo con Vertix" (en el mercado sólo se negocian echeq y FCE). **No implementado**: falta
+  confirmar si, al revés, un echeq puede ir directo — si no puede, el selector de modalidad sobra
+  porque se deduce del instrumento.
+- **Acreditación comprador vs. vendedor**: la fecha que hoy muestra el resultado es la del
+  comprador; el vendedor cobra el día de la simulación. Falta mostrar las dos y definir sobre qué
+  días corre el interés (ver el punto de abajo sobre la fecha de acreditación).
+- **Nota EPYME en Word**: piden que no aparezcan el encabezado y el pie del navegador al imprimir, y
+  proponen un `.docx` con "XXXX" en los campos a completar. **No implementado**: hay que decidir
+  entre eso (pierde el pre-llenado) o generar el archivo en el servidor.
 - **Tasa de cheques 48%**: el código y el fallback ya usan 48 + 2,5 de arancel, pero **la hoja
   todavía dice 43 y no tiene la fila `arancel_cheques`** (no pude escribirla, ver permisos arriba).
   Hasta que se corrija a mano, producción cotiza 45,5% en vez de 50,5%.

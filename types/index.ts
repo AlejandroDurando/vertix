@@ -113,6 +113,7 @@ export type PrecalificacionChequesData = {
   email: string;
   telefono: string;
   empresa: string; // PF: "Titular" o nombre
+  instrumento: InstrumentoCheque;
   monto_cheque: number;
   fecha_pago: string;
   banco_emisor: string;

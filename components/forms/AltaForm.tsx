@@ -252,6 +252,7 @@ function FisicaFields({
   const casado = estadoCivil === "casado";
   const sailing = alyc === "sailing";
   const [domicilioDniActual, setDomicilioDniActual] = useState("");
+  const [regimenSimplificado, setRegimenSimplificado] = useState("");
   return (
     <>
       <Section title="Datos del titular">
@@ -274,6 +275,17 @@ function FisicaFields({
         <Input name="nacimiento_localidad" label="Localidad de nacimiento" required hint="Aunque el DNI solo muestre la provincia, indicá la localidad." error={fe("nacimiento_localidad")} />
         <Input name="profesion" label="Profesión" required error={fe("profesion")} />
         <Select name="es_autonomo" label="¿Es autónomo?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_autonomo")} />
+        <Select
+          name="regimen_simplificado_ganancias"
+          label="¿Adherido al Régimen Simplificado de DDJJ de Ganancias?"
+          required
+          options={SI_NO}
+          placeholder="Seleccionar..."
+          value={regimenSimplificado}
+          onChange={(e) => setRegimenSimplificado(e.target.value)}
+          hint="Atención: no es el régimen general de Ganancias, es el SIMPLIFICADO. Si adherís, vas a tener que adjuntar la constancia de adhesión y luego completar una DDJJ."
+          error={fe("regimen_simplificado_ganancias")}
+        />
         <Select name="es_pep" label="¿Persona Expuesta Políticamente?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_pep")} />
         <Input name="cbu" label="CBU" required inputMode="numeric" placeholder="22 dígitos" error={fe("cbu")} />
         {sailing && (
@@ -318,6 +330,15 @@ function FisicaFields({
         <FileInput name="dni_frente" label="DNI (frente)" required accept={ACCEPT} error={fe("dni_frente")} />
         <FileInput name="dni_dorso" label="DNI (dorso)" required accept={ACCEPT} error={fe("dni_dorso")} />
         <FileInput name="constancia_cbu" label="Constancia de CBU" required accept={ACCEPT} error={fe("constancia_cbu")} />
+        {regimenSimplificado === "si" && (
+          <FileInput
+            name="constancia_regimen_simplificado"
+            label="Constancia de adhesión al Régimen Simplificado"
+            required
+            accept={ACCEPT}
+            error={fe("constancia_regimen_simplificado")}
+          />
+        )}
         {sailing && (
           <>
             <FileInput
@@ -460,8 +481,14 @@ function JuridicaFields({
         <FileInput name="constancia_cuit" label="Constancia de CUIT" required accept={ACCEPT} error={fe("constancia_cuit")} />
         <FileInput name="constancia_cbu" label="Constancia de CBU" required accept={ACCEPT} error={fe("constancia_cbu")} />
         <FileInput name="dni_socios" label="DNI de los socios (frente y dorso)" required accept={ACCEPT} hint="Podés subir un PDF con todos." error={fe("dni_socios")} />
-        <FileInput name="eecc" label="Estados contables (CPCE)" accept={ACCEPT} hint="Si no tenés EECC, subí las DDJJ debajo." error={fe("eecc")} />
-        <FileInput name="ddjj" label="Últimas 6 DDJJ de IVA e IIBB" accept={ACCEPT} hint="Sólo si no presentás estados contables." error={fe("ddjj")} />
+        <FileInput name="eecc" label="Estados contables (CPCE)" required accept={ACCEPT} hint="Certificados por el Consejo Profesional." error={fe("eecc")} />
+        <FileInput name="ddjj" label="DDJJ de IVA de los últimos 6 meses" required accept={ACCEPT} hint="Podés subir un PDF con las 6." error={fe("ddjj")} />
+        {casado && (
+          <>
+            <FileInput name="conyuge_dni_frente" label="DNI del cónyuge del firmante (frente)" required accept={ACCEPT} error={fe("conyuge_dni_frente")} />
+            <FileInput name="conyuge_dni_dorso" label="DNI del cónyuge del firmante (dorso)" required accept={ACCEPT} error={fe("conyuge_dni_dorso")} />
+          </>
+        )}
       </Section>
     </>
   );
