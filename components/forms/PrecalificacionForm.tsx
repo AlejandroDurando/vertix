@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
 import { postForm } from "@/lib/api-client";
+import {
+  MAX_TOTAL_BYTES,
+  comprimirAdjuntos,
+  mensajeExcedido,
+} from "@/lib/adjuntos-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { MIN_DIAS_HABILES, instrumentoRequiereMinDias } from "@/lib/validations";
 import type { InstrumentoCheque } from "@/types";
@@ -71,6 +76,13 @@ export function PrecalificacionForm() {
 
     const fd = new FormData(e.currentTarget);
     fd.set("servicio", servicio);
+
+    const resumen = await comprimirAdjuntos(fd);
+    if (resumen.total > MAX_TOTAL_BYTES) {
+      setError(mensajeExcedido(resumen));
+      setSubmitting(false);
+      return;
+    }
 
     const res = await postForm("/api/precalificacion", fd);
     setSubmitting(false);

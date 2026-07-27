@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
 import { postForm } from "@/lib/api-client";
+import {
+  MAX_TOTAL_BYTES,
+  comprimirAdjuntos,
+  mensajeExcedido,
+} from "@/lib/adjuntos-client";
 import { notaEpymeHtml } from "@/lib/nota-epyme";
 
 type TipoAlta = "fisica" | "juridica";
@@ -75,6 +80,15 @@ export function AltaForm() {
 
     const fd = new FormData(e.currentTarget);
     fd.set("tipo", tipo);
+
+    // Se comprimen las fotos antes de enviar: sin esto, un alta con varios
+    // documentos supera el límite del servidor y falla sin explicación.
+    const resumen = await comprimirAdjuntos(fd);
+    if (resumen.total > MAX_TOTAL_BYTES) {
+      setError(mensajeExcedido(resumen));
+      setSubmitting(false);
+      return;
+    }
 
     const res = await postForm("/api/alta", fd);
     setSubmitting(false);
@@ -326,7 +340,7 @@ function FisicaFields({
         </Section>
       )}
 
-      <Section title="Documentación (PDF o imagen, máx. 5MB c/u)">
+      <Section title="Documentación (PDF o imagen — las fotos se optimizan solas al enviar)">
         <FileInput name="dni_frente" label="DNI (frente)" required accept={ACCEPT} error={fe("dni_frente")} />
         <FileInput name="dni_dorso" label="DNI (dorso)" required accept={ACCEPT} error={fe("dni_dorso")} />
         <FileInput name="constancia_cbu" label="Constancia de CBU" required accept={ACCEPT} error={fe("constancia_cbu")} />
@@ -474,7 +488,7 @@ function JuridicaFields({
         </Section>
       )}
 
-      <Section title="Documentación (PDF o imagen, máx. 5MB c/u)">
+      <Section title="Documentación (PDF o imagen — las fotos se optimizan solas al enviar)">
         <FileInput name="estatuto" label="Estatuto y modificaciones inscriptas" required accept={ACCEPT} error={fe("estatuto")} />
         {conRegistroAcciones && (
           <FileInput name="registro_acciones" label="Libro de Registro de Acciones" required accept={ACCEPT} error={fe("registro_acciones")} />

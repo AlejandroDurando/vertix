@@ -168,12 +168,16 @@ verificación). Borrarlas cuando ya no sirvan.
 
 1. **Adjuntos sin almacenamiento durable** (riesgo alto). Los archivos viajan solo por email; en
    Sheets se guardan únicamente los nombres de campo. Si Resend falla o los adjuntos superan ~18MB,
-   los documentos se pierden. Solución prevista: subirlos a Google Drive (ya hay service account) o
-   a un bucket, y guardar los links en la fila. **Pospuesto por decisión del dueño** hasta confirmar
-   que todo lo demás funciona.
-2. **Límite de body de 4.5MB de Vercel**. El alta PJ exige ~6 adjuntos y una foto de DNI pesa 3–8MB:
-   el request va a dar 413, que el frontend no maneja. **Pospuesto**: se resolvería al migrar al
-   hosting propio, o antes con compresión client-side.
+   los documentos se pierden. ⚠️ **Google Drive no sirve como destino**: la service account tiene
+   quota 0 y `files.create` falla con "Service Accounts do not have storage quota". Requeriría una
+   unidad compartida (sólo con Google Workspace — el MX de `vertix.com.ar` apunta a Hostmar, así
+   que hoy no lo tienen) o delegación OAuth. La alternativa portable es un bucket S3-compatible
+   (R2/S3), que además sobrevive a la migración al hosting propio. **Falta decidir el destino.**
+2. **Límite de body de 4.5MB de Vercel**. Mitigado, no resuelto: `lib/adjuntos-client.ts` comprime
+   las imágenes en el navegador (2000px de lado largo, JPEG 0.82) y bloquea el envío antes de
+   mandarlo si el total supera 4MB, con un mensaje que nombra los archivos pesados; `lib/api-client.ts`
+   traduce el 413 y cualquier respuesta no-JSON a un error entendible. Un envío de PDFs pesados
+   sigue sin poder completarse: eso se resuelve recién con el punto 1.
 3. **Verificar dominio en Resend** para que los comprobantes lleguen a clientes reales.
 4. **Feriados hardcodeados** en `lib/fechas.ts`: 2026 completo, 2027 parcial. Mantenimiento anual.
 5. **Rate limiting en memoria**: por instancia de lambda, se resetea en cold start. Best-effort, no
