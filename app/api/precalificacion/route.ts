@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { firstZodError, precalificacionSchema } from "@/lib/validations";
 import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
-import { readUploads, type ParsedFile } from "@/lib/uploads";
+import { readUploads, type ParsedFile, type SubidoRef } from "@/lib/uploads";
+import { enlaceDescarga } from "@/lib/storage";
 import { appendPrecalificacion } from "@/lib/sheets-crm";
 import { emailConfirmacionPrecalificacion, emailPrecalificacion } from "@/lib/email";
 import { upsertHubspotContact } from "@/lib/hubspot";
@@ -16,7 +17,11 @@ const FILE_FIELDS = ["documentacion", "titulo_automotor", "constancia_cuit"];
 const NUMERIC_FIELDS = ["monto_cheque", "monto_solicitado", "plazo_meses"];
 
 type Parsed =
-  | { data: Record<string, unknown>; files: Record<string, ParsedFile> }
+  | {
+      data: Record<string, unknown>;
+      files: Record<string, ParsedFile>;
+      subidos: Record<string, SubidoRef>;
+    }
   | { error: string };
 
 async function parseBody(req: NextRequest): Promise<Parsed> {
@@ -25,7 +30,7 @@ async function parseBody(req: NextRequest): Promise<Parsed> {
   if (contentType.includes("application/json")) {
     try {
       const json = (await req.json()) as Record<string, unknown>;
-      return { data: json, files: {} };
+      return { data: json, files: {}, subidos: {} };
     } catch {
       return { error: "Body inválido (JSON esperado)" };
     }
@@ -58,14 +63,16 @@ export async function POST(req: NextRequest) {
 
   const data = validated.data;
   const files = parsed.files;
+  const subidos = parsed.subidos;
+  const presente = (campo: string) => Boolean(files[campo] || subidos[campo]);
   const sentAt = new Date().toISOString();
 
   // Validación de adjuntos obligatorios para préstamos.
   if (data.servicio === "prestamos") {
-    if (!files.documentacion) {
+    if (!presente("documentacion")) {
       return fail("Adjuntá la documentación de respaldo.", 400, "documentacion");
     }
-    if (data.tipo_prestamo === "prendario" && !files.titulo_automotor) {
+    if (data.tipo_prestamo === "prendario" && !presente("titulo_automotor")) {
       return fail(
         "Para préstamos prendarios el título del automotor es obligatorio.",
         400,
@@ -98,15 +105,24 @@ export async function POST(req: NextRequest) {
     base64: f.base64,
   }));
 
+  const enlaces = Object.entries(subidos).map(([campo, ref]) => ({
+    etiqueta: campo,
+    nombre: ref.nombre,
+    url: enlaceDescarga(ref.clave),
+  }));
+
   // Todo awaited: en serverless los fire-and-forget se cancelan al responder.
   const [sheetsRes, emailRes] = await Promise.all([
     appendPrecalificacion(data, sentAt, {
-      adjuntos: adjuntos.map((a) => a.campo),
+      adjuntos: enlaces.length
+        ? enlaces.map((e) => `${e.etiqueta}: ${e.url}`)
+        : adjuntos.map((a) => a.campo),
       bcra: bcraResumen,
     }),
     emailPrecalificacion(
       { ...data, ...(bcraResumen ? { bcra: bcraResumen } : {}) },
-      adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 }))
+      adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 })),
+      enlaces
     ),
   ]);
 
@@ -154,7 +170,8 @@ export async function POST(req: NextRequest) {
 
   logger.info("precalificacion", "Solicitud recibida", {
     servicio: data.servicio,
-    adjuntos: adjuntos.map((a) => a.campo),
+    adjuntos: [...adjuntos.map((a) => a.campo), ...Object.keys(subidos)],
+    en_bucket: enlaces.length,
     bcra: bcraResumen,
     confirmacion_enviada: confirmacion?.ok ?? false,
   });

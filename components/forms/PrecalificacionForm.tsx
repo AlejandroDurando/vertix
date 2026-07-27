@@ -11,6 +11,7 @@ import {
   MAX_TOTAL_BYTES,
   comprimirAdjuntos,
   mensajeExcedido,
+  subirAdjuntos,
 } from "@/lib/adjuntos-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { MIN_DIAS_HABILES, instrumentoRequiereMinDias } from "@/lib/validations";
@@ -78,7 +79,14 @@ export function PrecalificacionForm() {
     fd.set("servicio", servicio);
 
     const resumen = await comprimirAdjuntos(fd);
-    if (resumen.total > MAX_TOTAL_BYTES) {
+
+    const subida = await subirAdjuntos(fd, "precalificacion");
+    if (typeof subida === "object") {
+      setError(subida.error);
+      setSubmitting(false);
+      return;
+    }
+    if (subida === "sin-storage" && resumen.total > MAX_TOTAL_BYTES) {
       setError(mensajeExcedido(resumen));
       setSubmitting(false);
       return;

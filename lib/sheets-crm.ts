@@ -67,7 +67,7 @@ export async function appendPrecalificacion(
   sentAt: string,
   meta?: { adjuntos?: string[]; bcra?: string }
 ): Promise<AppendResult> {
-  const adjuntos = (meta?.adjuntos ?? []).join(", ");
+  const adjuntos = (meta?.adjuntos ?? []).join("\n");
   const bcra = meta?.bcra ?? "";
   const base = [sentAt, data.servicio, data.nombre, data.email, data.telefono];
 
@@ -116,7 +116,7 @@ export async function appendAlta(
   sentAt: string,
   adjuntos: string[]
 ): Promise<AppendResult> {
-  const docs = adjuntos.join(", ");
+  const docs = adjuntos.join("\n");
 
   if (data.tipo === "fisica") {
     return appendRow("AltasPF", [

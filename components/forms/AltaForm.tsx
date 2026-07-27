@@ -10,6 +10,7 @@ import {
   MAX_TOTAL_BYTES,
   comprimirAdjuntos,
   mensajeExcedido,
+  subirAdjuntos,
 } from "@/lib/adjuntos-client";
 import { notaEpymeHtml } from "@/lib/nota-epyme";
 
@@ -84,7 +85,17 @@ export function AltaForm() {
     // Se comprimen las fotos antes de enviar: sin esto, un alta con varios
     // documentos supera el límite del servidor y falla sin explicación.
     const resumen = await comprimirAdjuntos(fd);
-    if (resumen.total > MAX_TOTAL_BYTES) {
+
+    // Con el bucket configurado los archivos van directo ahí y el formulario
+    // viaja sólo con texto. Si todavía no lo está, se cae al camino viejo y
+    // hay que respetar el tope del request.
+    const subida = await subirAdjuntos(fd, "alta");
+    if (typeof subida === "object") {
+      setError(subida.error);
+      setSubmitting(false);
+      return;
+    }
+    if (subida === "sin-storage" && resumen.total > MAX_TOTAL_BYTES) {
       setError(mensajeExcedido(resumen));
       setSubmitting(false);
       return;

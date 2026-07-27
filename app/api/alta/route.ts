@@ -5,6 +5,7 @@ import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { readUploads } from "@/lib/uploads";
 import { appendAlta } from "@/lib/sheets-crm";
 import { emailAlta, emailConfirmacionAlta } from "@/lib/email";
+import { enlaceDescarga } from "@/lib/storage";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -79,6 +80,10 @@ export async function POST(req: NextRequest) {
 
   const data = validated.data;
   const files = parsed.files;
+  const subidos = parsed.subidos;
+  // Un documento cuenta como presente venga por el formulario o ya subido al
+  // bucket, así el chequeo de obligatorios no depende del camino que se usó.
+  const presente = (campo: string) => Boolean(files[campo] || subidos[campo]);
 
   // Adjuntos obligatorios según tipo y condiciones.
   const required: string[] = [];
@@ -132,20 +137,32 @@ export async function POST(req: NextRequest) {
   }
 
   for (const campo of required) {
-    if (!files[campo]) {
+    if (!presente(campo)) {
       return fail(`Falta adjuntar: ${LABELS[campo] ?? campo}.`, 400, campo);
     }
   }
 
   const sentAt = new Date().toISOString();
   const adjuntos = Object.entries(files).map(([campo, f]) => ({ campo, ...f }));
+  const enlaces = Object.entries(subidos).map(([campo, ref]) => ({
+    etiqueta: LABELS[campo] ?? campo,
+    nombre: ref.nombre,
+    url: enlaceDescarga(ref.clave),
+  }));
+
+  // En la planilla queda el enlace al documento cuando está en el bucket; si
+  // viajó por email, sólo el nombre del campo (no hay copia recuperable).
+  const paraSheets = enlaces.length
+    ? enlaces.map((e) => `${e.etiqueta}: ${e.url}`)
+    : adjuntos.map((a) => a.campo);
 
   // Todo awaited: en serverless los fire-and-forget se cancelan al responder.
   const [sheetsRes, emailRes] = await Promise.all([
-    appendAlta(data, sentAt, adjuntos.map((a) => a.campo)),
+    appendAlta(data, sentAt, paraSheets),
     emailAlta(
       data,
-      adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 }))
+      adjuntos.map((a) => ({ filename: `${a.campo}-${a.nombre}`, content: a.base64 })),
+      enlaces
     ),
   ]);
 
@@ -166,13 +183,18 @@ export async function POST(req: NextRequest) {
     nombre: data.tipo === "fisica" ? `${data.nombre} ${data.apellido}` : data.razon_social,
     tipo: data.tipo,
     alyc: data.alyc,
-    adjuntos: adjuntos.map((a) => LABELS[a.campo] ?? a.campo),
+    // Al solicitante se le lista lo recibido, nunca los enlaces internos.
+    adjuntos: [
+      ...adjuntos.map((a) => LABELS[a.campo] ?? a.campo),
+      ...Object.keys(subidos).map((campo) => LABELS[campo] ?? campo),
+    ],
   }).catch(() => null);
 
   logger.info("alta", "Alta recibida", {
     tipo: data.tipo,
     alyc: data.alyc,
-    adjuntos: adjuntos.map((a) => a.campo),
+    adjuntos: [...adjuntos.map((a) => a.campo), ...Object.keys(subidos)],
+    en_bucket: enlaces.length,
     confirmacion_enviada: confirmacion?.ok ?? false,
   });
 

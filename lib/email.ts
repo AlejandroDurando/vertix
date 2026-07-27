@@ -101,7 +101,8 @@ function tablaRows(data: Record<string, unknown>, omit: string[] = []): string {
 
 export async function emailPrecalificacion(
   data: Record<string, unknown>,
-  attachments: EmailAttachment[] = []
+  attachments: EmailAttachment[] = [],
+  enlaces: EnlaceDocumento[] = []
 ): Promise<EmailResult> {
   const servicio = String(data.servicio ?? "").toLowerCase();
   const nombre = String(data.nombre ?? "");
@@ -120,14 +121,34 @@ export async function emailPrecalificacion(
     <h2 style="color:#1B2A4E">Nueva solicitud de pre-calificación</h2>
     <p style="color:#666">Servicio: <strong>${label}</strong></p>
     <table style="border-collapse:collapse;width:100%;font-family:sans-serif">${tablaRows(data)}</table>
+    ${bloqueEnlaces(enlaces)}
     ${adjuntosLine}
   `;
   return send(subject, html, adjuntar ? attachments : undefined);
 }
 
+export type EnlaceDocumento = { etiqueta: string; nombre: string; url: string };
+
+/** Lista de documentos guardados en el bucket, con su enlace de descarga. */
+function bloqueEnlaces(enlaces: EnlaceDocumento[]): string {
+  if (enlaces.length === 0) return "";
+  const items = enlaces
+    .map(
+      (e) =>
+        `<li style="padding:3px 0"><a href="${esc(e.url)}">${esc(e.etiqueta)}</a>` +
+        `<span style="color:#999"> — ${esc(e.nombre)}</span></li>`
+    )
+    .join("");
+  return `
+    <p style="margin-top:16px;color:#666;font-size:13px">📎 Documentación (${enlaces.length}):</p>
+    <ul style="font-family:sans-serif;font-size:14px;padding-left:18px">${items}</ul>
+  `;
+}
+
 export async function emailAlta(
   data: Record<string, unknown>,
-  attachments: EmailAttachment[] = []
+  attachments: EmailAttachment[] = [],
+  enlaces: EnlaceDocumento[] = []
 ): Promise<EmailResult> {
   const tipo = String(data.tipo ?? "") === "fisica" ? "Persona física" : "Persona jurídica";
   const nombre = String(data.razon_social ?? `${data.apellido ?? ""}, ${data.nombre ?? ""}`);
@@ -144,6 +165,7 @@ export async function emailAlta(
     <h2 style="color:#1B2A4E">Nueva alta de cuenta comitente</h2>
     <p style="color:#666">Tipo: <strong>${tipo}</strong></p>
     <table style="border-collapse:collapse;width:100%;font-family:sans-serif">${tablaRows(data)}</table>
+    ${bloqueEnlaces(enlaces)}
     ${adjuntosLine}
   `;
   return send(subject, html, adjuntar ? attachments : undefined);

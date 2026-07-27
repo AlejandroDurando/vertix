@@ -108,6 +108,80 @@ export async function comprimirAdjuntos(fd: FormData): Promise<ResumenAdjuntos> 
   return { total, archivos };
 }
 
+/**
+ * Sube los archivos directo al bucket y reemplaza cada campo de archivo del
+ * FormData por su referencia (`campo__clave` y `campo__nombre`), de modo que el
+ * formulario viaje sólo con texto y el límite de 4,5MB deje de aplicar.
+ *
+ * Devuelve `"sin-storage"` si el servidor todavía no tiene el bucket
+ * configurado: en ese caso el formulario sigue con el camino viejo, mandando
+ * los archivos dentro del multipart.
+ */
+export async function subirAdjuntos(
+  fd: FormData,
+  tramite: "alta" | "precalificacion"
+): Promise<"ok" | "sin-storage" | { error: string }> {
+  const entradas: [string, File][] = [];
+  fd.forEach((valor, campo) => {
+    if (valor instanceof File && valor.size > 0) entradas.push([campo, valor]);
+  });
+  if (entradas.length === 0) return "ok";
+
+  for (const [campo, file] of entradas) {
+    let firma: Response;
+    try {
+      firma = await fetch("/api/adjuntos/firmar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tramite,
+          campo,
+          nombre: file.name,
+          tipo: file.type,
+          tamano: file.size,
+        }),
+      });
+    } catch {
+      return { error: "No se pudo conectar con el servidor para subir los archivos." };
+    }
+
+    // El servidor avisa así que el bucket no está configurado todavía.
+    if (firma.status === 503) return "sin-storage";
+
+    const cuerpo = (await firma.json().catch(() => null)) as
+      | { success: true; data: { url: string; clave: string } }
+      | { success: false; error: string }
+      | null;
+
+    if (!cuerpo || !cuerpo.success) {
+      return {
+        error: cuerpo?.success === false ? cuerpo.error : "No pudimos preparar la subida.",
+      };
+    }
+
+    try {
+      const put = await fetch(cuerpo.data.url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!put.ok) {
+        return { error: `No pudimos subir "${file.name}". Intentá nuevamente.` };
+      }
+    } catch {
+      return {
+        error: `Se interrumpió la subida de "${file.name}". Revisá tu conexión e intentá nuevamente.`,
+      };
+    }
+
+    fd.delete(campo);
+    fd.set(`${campo}__clave`, cuerpo.data.clave);
+    fd.set(`${campo}__nombre`, file.name);
+  }
+
+  return "ok";
+}
+
 /** Mensaje de error cuando el envío sigue siendo demasiado pesado. */
 export function mensajeExcedido(resumen: ResumenAdjuntos): string {
   const pesados = resumen.archivos

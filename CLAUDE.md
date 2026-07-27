@@ -49,6 +49,12 @@ handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve 
   `sheets-crm.ts` (pestañas `AltasPF`/`AltasPJ`) + `email.ts` (adjuntos van en el email, no se
   guardan — ver pendiente #1 abajo) en paralelo.
 
+**Adjuntos**: si el bucket está configurado, los forms piden una URL firmada a `/api/adjuntos/firmar`,
+suben cada archivo **directo al bucket** (así el request nunca toca el límite de 4,5MB de Vercel) y
+mandan sólo `<campo>__clave` + `<campo>__nombre`. `lib/uploads.ts` los devuelve en `subidos`, y para
+los chequeos de obligatorios un documento cuenta igual venga por `files` o por `subidos`. Antes de
+subir, `lib/adjuntos-client.ts` comprime las imágenes en el navegador.
+
 Todas las rutas comparten `lib/rate-limit.ts` (in-memory por IP, ver pendiente #5) y `lib/logger.ts`
 (logger JSON que redacta PII). `lib/hubspot.ts` se llama desde contacto/precalificación pero es un
 stub inactivo (ver tabla de integraciones).
@@ -129,6 +135,7 @@ rechaza en simulador y precalificación.
 | **Resend (email)** | Activo para la casilla interna. Los emails de confirmación al solicitante **no llegan a externos** hasta verificar el dominio `vertix.com.ar` en Resend (DNS). La API devuelve `confirmacion_enviada` para chequearlo. |
 | **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
 | **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |
+| **Almacenamiento de adjuntos (S3/R2)** | **Código listo, sin credenciales.** `lib/storage.ts` + `/api/adjuntos/firmar` (URL de subida) + `/api/adjuntos` (descarga con token). Se activa cuando estén `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `ADJUNTOS_SECRET` y `APP_URL`. Sin eso, `firmar` devuelve 503 y los forms mandan los archivos dentro del multipart, como antes. |
 | **HubSpot** | **Inactivo.** `lib/hubspot.ts` es un stub: la lógica real está comentada y espera `HUBSPOT_API_KEY`. Se llama desde contacto y precalificación pero devuelve `disabled`. |
 
 ⚠️ El CRM tiene filas de prueba que empiezan con **`EJEMPLO`** en las 4 pestañas (carga de
@@ -166,19 +173,22 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Pendientes técnicos
 
-1. **Adjuntos sin almacenamiento durable** (riesgo alto). Los archivos viajan solo por email; en
-   Sheets se guardan únicamente los nombres de campo. Si Resend falla o los adjuntos superan ~18MB,
-   los documentos se pierden. ⚠️ **Google Drive no sirve como destino**: la service account tiene
-   quota 0 y `files.create` falla con "Service Accounts do not have storage quota". Requeriría una
-   unidad compartida (sólo con Google Workspace — el MX de `vertix.com.ar` apunta a Hostmar, así
-   que hoy no lo tienen) o delegación OAuth. La alternativa portable es un bucket S3-compatible
-   (R2/S3), que además sobrevive a la migración al hosting propio. **Falta decidir el destino.**
+1. **Adjuntos sin almacenamiento durable** — código listo, **falta crear el bucket**. `lib/storage.ts`
+   sube a cualquier bucket S3-compatible (elegido R2); mientras las variables `S3_*` estén vacías el
+   sistema sigue como antes: los documentos viajan sólo por email y no queda copia recuperable.
+   ⚠️ **Google Drive no sirve como destino**: la service account tiene quota 0 y `files.create` falla
+   con "Service Accounts do not have storage quota"; requeriría unidad compartida (sólo con Google
+   Workspace — el MX de `vertix.com.ar` apunta a Hostmar, así que hoy no lo tienen) o delegación OAuth.
 2. **Límite de body de 4.5MB de Vercel**. Mitigado, no resuelto: `lib/adjuntos-client.ts` comprime
    las imágenes en el navegador (2000px de lado largo, JPEG 0.82) y bloquea el envío antes de
    mandarlo si el total supera 4MB, con un mensaje que nombra los archivos pesados; `lib/api-client.ts`
    traduce el 413 y cualquier respuesta no-JSON a un error entendible. Un envío de PDFs pesados
    sigue sin poder completarse: eso se resuelve recién con el punto 1.
-3. **Verificar dominio en Resend** para que los comprobantes lleguen a clientes reales.
+3. **Verificar dominio en Resend** para que los comprobantes lleguen a clientes reales. ⚠️ El SPF de
+   `vertix.com.ar` **ya existe** y termina en `-all` (rechazo estricto):
+   `v=spf1 include:spf.hostmar.com include:_spf.google.com include:spf.protection.outlook.com -all`.
+   Hay que **editar ese registro** agregando el include de Resend, nunca crear un TXT nuevo: dos
+   registros SPF en el mismo dominio invalidan la verificación y hacen rebotar todo el correo.
 4. **Feriados hardcodeados** en `lib/fechas.ts`: 2026 completo, 2027 parcial. Mantenimiento anual.
 5. **Rate limiting en memoria**: por instancia de lambda, se resetea en cold start. Best-effort, no
    es protección real. La IP de `x-forwarded-for` es spoofeable.
