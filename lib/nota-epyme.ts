@@ -41,8 +41,11 @@ export function notaEpymeHtml(input: NotaEpymeInput): string {
   const now = new Date();
   const fecha = `Buenos Aires, ${now.getDate()} de ${MESES[now.getMonth()]} de ${now.getFullYear()}.`;
   const destinatario = ALYC_NOMBRE[input.alyc];
+  // El carácter de quien firma no siempre es "apoderado": puede ser socio
+  // gerente, socio, administrador titular, etc. Se toma el cargo cargado en el
+  // formulario; si viniera vacío se deja "XXXX" para que se complete a mano.
   const caracter = input.esPersonaJuridica
-    ? `apoderado de ${esc(input.razonSocial ?? "")}`
+    ? `${esc(input.firmanteCargo || "XXXX")} de ${esc(input.razonSocial ?? "")}`
     : "titular";
 
   return `<!doctype html>

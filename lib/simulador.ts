@@ -19,8 +19,10 @@ import {
 // Las tasas de la hoja se interpretan como TNA (Tasa Nominal Anual) en %.
 const DIAS_ANIO = 365;
 
+// La leyenda de aprobación crediticia y gastos de sellados corresponde sólo a
+// préstamos: se quitó de acá por pedido del cliente (25/07/2026).
 const DISCLAIMER_CHEQUES =
-  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. La tasa incluye el arancel de la empresa, pero no contempla otros derechos de mercado ni impuestos que se le cobran al vendedor del cheque. El otorgamiento depende de aprobación crediticia y no incluye gastos de sellados, certificación de firmas, etc. La tasa puede variar.";
+  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. La tasa incluye el arancel de la empresa, pero no contempla otros derechos de mercado ni impuestos que se le cobran al vendedor del cheque. La tasa puede variar.";
 
 /**
  * Un cheque se acredita 2 días hábiles después de su fecha de pago si ésta es
@@ -64,6 +66,9 @@ export function simularCheques(
     modalidad: input.modalidad,
     dias_considerados: dias,
     fecha_acreditacion_estimada: toISODate(fechaAcreditacion),
+    // Quien vende el cheque cobra el día de la operación; la acreditación
+    // calculada arriba es la del comprador.
+    fecha_acreditacion_vendedor: toISODate(ahora),
     disclaimer: DISCLAIMER_CHEQUES,
   };
 }

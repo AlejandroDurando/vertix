@@ -71,9 +71,11 @@ export async function appendPrecalificacion(
   const bcra = meta?.bcra ?? "";
   const base = [sentAt, data.servicio, data.nombre, data.email, data.telefono];
 
-  // Columnas F..P según servicio (ver encabezados en la hoja). fecha_pago (H)
+  // Columnas F..Q según servicio (ver encabezados en la hoja). fecha_pago (H)
   // y plazo_meses (I) van en columnas separadas: si comparten columna, Sheets
   // le aplica formato de fecha al plazo y lo muestra como una fecha de 1900.
+  // "instrumento" se agregó al final (Q) para no correr las columnas de las
+  // filas ya cargadas.
   if (data.servicio === "cheques") {
     return appendRow("Precalificacion", [
       ...base,
@@ -88,6 +90,7 @@ export async function appendPrecalificacion(
       "", // N tipo_ingreso
       bcra, // O
       adjuntos, // P
+      data.instrumento, // Q
     ]);
   }
 
@@ -104,6 +107,7 @@ export async function appendPrecalificacion(
     data.tipo_ingreso, // N
     bcra, // O
     adjuntos, // P
+    "", // Q instrumento
   ]);
 }
 
@@ -140,6 +144,8 @@ export async function appendAlta(
       data.conyuge_nombre ?? "",
       data.conyuge_dni ?? "",
       docs,
+      // Agregado al final para no correr las columnas de las filas ya cargadas.
+      data.regimen_simplificado_ganancias,
     ]);
   }
 

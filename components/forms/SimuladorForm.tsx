@@ -9,9 +9,15 @@ import { Tabs } from "@/components/ui/Tabs";
 import { postJson } from "@/lib/api-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { formatearCuit } from "@/lib/cuit";
-import { MIN_DIAS_HABILES } from "@/lib/validations";
+import {
+  MIN_DIAS_HABILES,
+  instrumentoSoloDirecto,
+  modalidadRequiereMinDias,
+} from "@/lib/validations";
 import type {
   BcraInfo,
+  InstrumentoCheque,
+  ModalidadCheque,
   SimuladorChequesOutput,
   SimuladorPrestamosOutput,
 } from "@/types";
@@ -49,13 +55,21 @@ export function SimuladorForm() {
   const [chequesResult, setChequesResult] = useState<ChequesResult | null>(null);
   const [prestamosResult, setPrestamosResult] = useState<PrestamosResult | null>(null);
   const [fechaPago, setFechaPago] = useState("");
+  const [modalidad, setModalidad] = useState<ModalidadCheque>("directo");
+  const [instrumento, setInstrumento] = useState<InstrumentoCheque>("cheque");
 
-  // Fecha mínima de pago = hoy + 5 días hábiles (no se descuentan valores con menor plazo).
+  // El cheque físico no se negocia en el mercado: sólo admite modalidad directa.
+  const soloDirecto = instrumentoSoloDirecto(instrumento);
+  const modalidadEfectiva: ModalidadCheque = soloDirecto ? "directo" : modalidad;
+
+  // El mínimo de 5 días hábiles lo exige el mercado de capitales: sólo rige
+  // para la cuenta comitente. Directo con Vertix se puede operar con menos.
+  const exigeMinDias = modalidadRequiereMinDias(modalidadEfectiva);
   const minFechaPago = useMemo(
     () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
     []
   );
-  const fechaMuyCercana = fechaPago !== "" && fechaPago < minFechaPago;
+  const fechaMuyCercana = exigeMinDias && fechaPago !== "" && fechaPago < minFechaPago;
 
   function changeTipo(next: Tipo) {
     setTipo(next);
@@ -141,27 +155,37 @@ export function SimuladorForm() {
                 label="Instrumento"
                 options={INSTRUMENTO}
                 placeholder="Seleccionar..."
-                defaultValue="cheque"
+                value={instrumento}
+                onChange={(e) => setInstrumento(e.target.value as InstrumentoCheque)}
                 required
                 error={fe("instrumento")}
               />
               <Select
                 name="modalidad"
                 label="Modalidad"
-                options={MODALIDAD}
+                options={soloDirecto ? [MODALIDAD[0]] : MODALIDAD}
                 placeholder="Seleccionar..."
-                defaultValue="directo"
+                value={modalidadEfectiva}
+                onChange={(e) => setModalidad(e.target.value as ModalidadCheque)}
                 required
-                hint="Con cuenta comitente la tasa es más baja."
+                hint={
+                  soloDirecto
+                    ? "El cheque físico se opera únicamente directo con Vertix: en el mercado sólo se negocian echeq y FCE."
+                    : "Con cuenta comitente la tasa es más baja."
+                }
                 error={fe("modalidad")}
               />
               <Input
                 name="fecha_pago"
                 label="Fecha de pago del cheque"
                 type="date"
-                min={minFechaPago}
+                min={exigeMinDias ? minFechaPago : undefined}
                 required
-                hint={`Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy.`}
+                hint={
+                  exigeMinDias
+                    ? `Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy (lo exige el mercado de capitales).`
+                    : undefined
+                }
                 onChange={(e) => setFechaPago(e.target.value)}
                 error={fe("fecha_pago")}
               />
@@ -199,9 +223,11 @@ export function SimuladorForm() {
 
         {tipo === "cheques" && fechaMuyCercana && (
           <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
-            Por este medio no podemos cotizar cheques con vencimiento menor a 5 días
-            hábiles. <Link href="/contacto" className="font-semibold underline">Comunicate con nosotros</Link>{" "}
-            y podemos ver otra manera de negociación.
+            Con cuenta comitente no podemos tomar valores con vencimiento menor a 5
+            días hábiles: lo exige el mercado de capitales. Probá con{" "}
+            <strong>Directo con Vertix</strong> o{" "}
+            <Link href="/contacto" className="font-semibold underline">comunicate con nosotros</Link>{" "}
+            para ver otra manera de negociación.
           </Alert>
         )}
 
@@ -262,7 +288,14 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
           value={data.modalidad === "comitente" ? "Cuenta comitente" : "Directo con Vertix"}
         />
         <Row label="Días considerados" value={`${data.dias_considerados}`} />
-        <Row label="Acreditación estimada" value={fmtFecha(data.fecha_acreditacion_estimada)} />
+        <Row
+          label="Acreditación al vendedor"
+          value={fmtFecha(data.fecha_acreditacion_vendedor)}
+        />
+        <Row
+          label="Acreditación estimada (comprador)"
+          value={fmtFecha(data.fecha_acreditacion_estimada)}
+        />
         <Row label="Tasa de descuento (TNA)" value={`${data.tna_interes}%`} />
         <Row label="Arancel" value={`${data.arancel}%`} />
         <Row label="Tasa total aplicada (TNA)" value={`${data.tna_aplicada}%`} />

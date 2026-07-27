@@ -14,6 +14,10 @@
  *   - Situación 1/2 o con cheques impagos   → se analiza (advertir).
  *   - Situación 3 o superior               → no se descuenta (bloquear, no emitir presupuesto).
  *
+ * El bloqueo aplica sólo al LIBRADOR: es quien termina pagando el cheque. La
+ * situación del endosatario se informa ("requiere análisis previo") pero no
+ * traba el presupuesto (pedido del cliente, 25/07/2026).
+ *
  * Si la API no responde, se hace "fail-open": se permite continuar pero se
  * informa que no se pudo verificar (para no frenar a un cliente legítimo por
  * una caída del servicio del BCRA).
@@ -190,21 +194,36 @@ export function evaluarBcra(r: BcraResultado, etiqueta = "El librador"): BcraDec
   return { decision: "permitir", motivo: "Sin observaciones en el BCRA." };
 }
 
-/** Resumen para mostrar al usuario (siempre, esté limpio o no). */
-export function infoBcra(r: BcraResultado, etiqueta: string): BcraInfo {
+/**
+ * Resumen para mostrar al usuario (siempre, esté limpio o no).
+ *
+ * `soloInformativo` se usa para el endosatario: su situación se informa pero no
+ * traba el presupuesto (quien paga el cheque es el librador), así que una
+ * situación 3+ se muestra como "requiere análisis previo" y no como riesgo.
+ */
+export function infoBcra(
+  r: BcraResultado,
+  etiqueta: string,
+  opts?: { soloInformativo?: boolean }
+): BcraInfo {
   const ev = evaluarBcra(r, etiqueta);
+  const bloquea = ev.decision === "bloquear" && !opts?.soloInformativo;
   const estado: BcraInfo["estado"] = !r.disponible
     ? "no_verificado"
-    : ev.decision === "bloquear"
+    : bloquea
       ? "riesgo"
-      : ev.decision === "advertir"
+      : ev.decision === "bloquear" || ev.decision === "advertir"
         ? "analisis"
         : "ok";
+  const mensaje =
+    ev.decision === "bloquear" && opts?.soloInformativo
+      ? `${etiqueta} registra situación ${r.situacionMaxima} en el BCRA. Requiere análisis previo.`
+      : ev.motivo;
   return {
     cuit: r.cuit,
     situacion: r.disponible ? r.situacionMaxima : null,
     cheques_rechazados: r.chequesRechazadosImpagos,
     estado,
-    mensaje: ev.motivo,
+    mensaje,
   };
 }
