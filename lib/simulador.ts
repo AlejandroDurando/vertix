@@ -6,7 +6,7 @@ import type {
   Tasas,
   TipoPersona,
 } from "@/types";
-import { getTasaForServicio } from "./tasas";
+import { describirTramo, tramoParaOperacion } from "./tasas";
 import {
   diasCalendarioEntre,
   esDiaHabil,
@@ -42,17 +42,29 @@ export function simularCheques(
   tasas: Tasas,
   ahora: Date = hoy()
 ): SimuladorChequesOutput {
-  const servicio =
-    input.modalidad === "comitente" ? "cheques_comitente" : "cheques_directo";
-  const tnaInteres = getTasaForServicio(tasas, servicio); // % anual (variable)
-  const arancel = tasas.arancel_cheques; // % anual (arancel empresa, fijo)
-  const tna = tnaInteres + arancel; // TNA total que paga el vendedor
   const fechaPago = parseISODate(input.fecha_pago);
 
-  // El descuento corre hasta la fecha estimada de acreditación (no hasta la
-  // fecha de pago), que es cuando el vendedor recibe efectivamente los fondos.
+  // El descuento corre hasta la fecha estimada de acreditación del comprador
+  // (confirmado por el cliente el 31/07/2026), y ese mismo plazo define el
+  // tramo de tasa que se aplica.
   const fechaAcreditacion = fechaAcreditacionEstimada(fechaPago);
   const dias = Math.max(1, diasCalendarioEntre(ahora, fechaAcreditacion));
+
+  const tramo = tramoParaOperacion(tasas, {
+    modalidad: input.modalidad,
+    instrumento: input.instrumento,
+    dias,
+  });
+  const tnaInteres = tramo.tasa;
+  const arancel = tramo.gastos;
+  const tna = tnaInteres + arancel; // TNA total que paga el vendedor
+
+  const listaTramos =
+    input.modalidad === "comitente"
+      ? input.instrumento === "fce"
+        ? [tasas.cheques.comitenteFce]
+        : tasas.cheques.comitente
+      : tasas.cheques.directo;
 
   const descuento = input.monto * (tna / 100) * (dias / DIAS_ANIO);
   const monto_a_recibir = input.monto - descuento;
@@ -63,6 +75,7 @@ export function simularCheques(
     tna_aplicada: round2(tna),
     tna_interes: tnaInteres,
     arancel,
+    tramo: describirTramo(tramo, listaTramos),
     modalidad: input.modalidad,
     dias_considerados: dias,
     fecha_acreditacion_estimada: toISODate(fechaAcreditacion),

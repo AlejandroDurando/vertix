@@ -38,6 +38,8 @@ next-env.d.ts
 
 # documentos del cliente (no versionar)
 *.docx
+# excepción: este va al deploy porque el alta lo ofrece para descargar
+!public/documentos/*.docx
 
 # notas internas de trabajo (no versionar)
 CAMBIOS.md

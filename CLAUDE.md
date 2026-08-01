@@ -95,9 +95,13 @@ configurado, los formularios devuelven 503 — es correcto, no es un bug.
 memoria (un cambio en la hoja tarda hasta 1h en verse), fallback hardcodeado si la hoja falla, y se
 ignoran valores fuera del rango 5–300% (protege contra el formato viejo y errores de tipeo).
 
-**Tasa de cheques = tasa de descuento + arancel.** Filas separadas en la hoja (`cheques_directo` /
-`cheques_comitente` + `arancel_cheques`) porque la tasa varía y el arancel de la empresa (2,5%) no.
-El resultado muestra los tres números desglosados.
+**Tasa de cheques = tasa de descuento + gastos, por modalidad y por tramo de plazo** (confirmado el
+31/07/2026). Directo con Vertix: ≤45 días 48% + 2%, ≥46 días 72% + 3,5%. Comitente: ≤30 días 40%,
+31–60 43%, ≥61 45%, siempre + 2,5% de arancel. La FCE en comitente no tiene tramos (su tasa depende
+del pagador de la factura): 40% + 2,5% como estimación. Cada tramo son **dos filas en la hoja**
+(tasa y gastos) para poder ajustar una sin la otra; `tramoParaOperacion()` en `lib/tasas.ts` elige
+cuál aplica. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
+la acreditación del comprador. El resultado desglosa tasa, gastos, total y el tramo aplicado.
 
 **Préstamos cotizan un rango, no un valor.** La tasa depende del solicitante y del mercado
 (cauciones, bancos), no del tipo de persona — dar una cuota exacta sería precisión falsa. Se cotiza

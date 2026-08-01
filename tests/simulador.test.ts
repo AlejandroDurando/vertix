@@ -9,9 +9,18 @@ import { parseISODate, toISODate } from "@/lib/fechas";
 import type { Tasas } from "@/types";
 
 const TASAS: Tasas = {
-  cheques_directo: 48,
-  cheques_comitente: 35,
-  arancel_cheques: 2.5,
+  cheques: {
+    directo: [
+      { hastaDias: 45, tasa: 48, gastos: 2 },
+      { hastaDias: null, tasa: 72, gastos: 3.5 },
+    ],
+    comitente: [
+      { hastaDias: 30, tasa: 40, gastos: 2.5 },
+      { hastaDias: 60, tasa: 43, gastos: 2.5 },
+      { hastaDias: null, tasa: 45, gastos: 2.5 },
+    ],
+    comitenteFce: { hastaDias: null, tasa: 40, gastos: 2.5 },
+  },
   prestamos_ph: 72,
   prestamos_pj: 82,
   actualizado_el: "test",
@@ -52,26 +61,56 @@ describe("simularCheques", () => {
     // El vendedor cobra el día de la operación, no cuando se acredita el comprador.
     expect(r.fecha_acreditacion_vendedor).toBe("2026-01-05");
     expect(r.dias_considerados).toBe(9);
-    // 1.000.000 * (48% + 2,5%) * 9/365
-    expect(r.descuento_total).toBeCloseTo(12452.05, 2);
-    expect(r.monto_a_recibir).toBeCloseTo(987547.95, 2);
-    expect(r.tna_aplicada).toBe(50.5);
+    // 1.000.000 * (48% + 2%) * 9/365
+    expect(r.descuento_total).toBeCloseTo(12328.77, 2);
+    expect(r.monto_a_recibir).toBeCloseTo(987671.23, 2);
+    expect(r.tna_aplicada).toBe(50);
   });
 
-  it("la tasa total desglosa interés + arancel", () => {
+  it("la tasa total desglosa interés + gastos", () => {
     const r = simularCheques(input, TASAS, ahora);
     expect(r.tna_interes).toBe(48);
-    expect(r.arancel).toBe(2.5);
+    expect(r.arancel).toBe(2);
     expect(r.tna_aplicada).toBeCloseTo(r.tna_interes + r.arancel, 10);
+    expect(r.tramo).toBe("hasta 45 días");
   });
 
-  it("usa la tasa comitente cuando corresponde (más el arancel)", () => {
-    const r = simularCheques({ ...input, modalidad: "comitente" }, TASAS, ahora);
-    expect(r.tna_interes).toBe(35);
-    expect(r.tna_aplicada).toBe(37.5);
-    expect(r.descuento_total).toBeLessThan(
+  // El plazo que define el tramo es el mismo que se usa para el descuento:
+  // días hasta la acreditación del comprador.
+  it("salta al tramo largo cuando la acreditación pasa los 45 días", () => {
+    const corto = simularCheques({ ...input, fecha_pago: "2026-02-10" }, TASAS, ahora);
+    expect(corto.dias_considerados).toBeLessThanOrEqual(45);
+    expect(corto.tna_aplicada).toBe(50);
+
+    const largo = simularCheques({ ...input, fecha_pago: "2026-03-16" }, TASAS, ahora);
+    expect(largo.dias_considerados).toBeGreaterThanOrEqual(46);
+    expect(largo.tna_interes).toBe(72);
+    expect(largo.arancel).toBe(3.5);
+    expect(largo.tramo).toBe("46 días o más");
+  });
+
+  it("comitente cotiza más barato que directo en el mismo plazo", () => {
+    const comitente = simularCheques(
+      { ...input, modalidad: "comitente", instrumento: "echeq" },
+      TASAS,
+      ahora
+    );
+    expect(comitente.tna_interes).toBe(40);
+    expect(comitente.tna_aplicada).toBe(42.5);
+    expect(comitente.descuento_total).toBeLessThan(
       simularCheques(input, TASAS, ahora).descuento_total
     );
+  });
+
+  it("la FCE en comitente usa la estimación única", () => {
+    const r = simularCheques(
+      { ...input, modalidad: "comitente", instrumento: "fce", fecha_pago: "2026-06-15" },
+      TASAS,
+      ahora
+    );
+    expect(r.tna_interes).toBe(40);
+    expect(r.arancel).toBe(2.5);
+    expect(r.tramo).toBe("todos los plazos");
   });
 });
 

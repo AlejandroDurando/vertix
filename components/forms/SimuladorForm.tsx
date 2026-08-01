@@ -296,8 +296,9 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
           label="Acreditación estimada (comprador)"
           value={fmtFecha(data.fecha_acreditacion_estimada)}
         />
+        <Row label="Tramo de plazo" value={data.tramo} />
         <Row label="Tasa de descuento (TNA)" value={`${data.tna_interes}%`} />
-        <Row label="Arancel" value={`${data.arancel}%`} />
+        <Row label="Gastos" value={`${data.arancel}%`} />
         <Row label="Tasa total aplicada (TNA)" value={`${data.tna_aplicada}%`} />
       </div>
       {data.bcra && (

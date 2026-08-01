@@ -96,7 +96,7 @@ const rows = res.data.values ?? [];
 if (rows.length === 0) {
   fail(
     'La hoja "tasas" está vacía',
-    "Agregá las filas: cheques_directo / cheques_comitente / prestamos_ph / prestamos_pj (TNA anual en %)"
+    "Agregá una fila por tramo (ver .env.example): directo_hasta_45, directo_desde_46, comitente_hasta_30, etc."
   );
 }
 
@@ -118,33 +118,41 @@ for (const row of dataRows) {
   if (f && !updated) updated = String(f);
 }
 
-// "cheques" funciona como alias y cubre ambas modalidades si no se cargan aparte.
-const chequesAlias = map.get("cheques");
-const chequesDirecto = map.has("cheques_directo") ? map.get("cheques_directo") : chequesAlias;
-const chequesComitente = map.has("cheques_comitente") ? map.get("cheques_comitente") : chequesAlias;
+// Una fila por tramo: la tasa de descuento y los gastos van separados para que
+// se pueda ajustar una sin tocar la otra.
+const REQUERIDAS = [
+  "directo_hasta_45", "gastos_directo_hasta_45",
+  "directo_desde_46", "gastos_directo_desde_46",
+  "comitente_hasta_30", "comitente_31_60", "comitente_desde_61",
+  "comitente_fce", "arancel_comitente",
+  "prestamos_ph", "prestamos_pj",
+];
 
-const missingRows = [];
-if (chequesDirecto == null) missingRows.push("cheques_directo (o cheques)");
-if (chequesComitente == null) missingRows.push("cheques_comitente (o cheques)");
-if (!map.has("prestamos_ph")) missingRows.push("prestamos_ph");
-if (!map.has("prestamos_pj")) missingRows.push("prestamos_pj");
+const missingRows = REQUERIDAS.filter((k) => !map.has(k));
 if (missingRows.length > 0) {
   fail(
     `Faltan filas en la hoja: ${missingRows.join(", ")}`,
-    "La hoja debe tener una fila por servicio, con la TNA anual en %"
+    "La hoja debe tener una fila por tramo, con la TNA anual en %"
   );
 }
 
 ok("Filas de servicio presentes");
-const arancel = map.has("arancel_cheques") ? map.get("arancel_cheques") : 2.5;
-const arancelOrigen = map.has("arancel_cheques") ? "" : " (default, no está en la hoja)";
+
+const v = (k) => map.get(k);
+const total = (t, g) => `${Number((v(t) + v(g)).toFixed(2))}% total`;
 console.log("");
-console.log(c.bold("Tasas leídas (TNA anual):"));
-console.log(c.dim("  cheques_directo    → ") + c.yellow(`${chequesDirecto}%`) + c.dim(` + arancel = ${chequesDirecto + arancel}% total`));
-console.log(c.dim("  cheques_comitente  → ") + c.yellow(`${chequesComitente}%`) + c.dim(` + arancel = ${chequesComitente + arancel}% total`));
-console.log(c.dim("  arancel_cheques    → ") + c.yellow(`${arancel}%`) + c.dim(arancelOrigen));
-console.log(c.dim("  prestamos_ph       → ") + c.yellow(`${map.get("prestamos_ph")}%`));
-console.log(c.dim("  prestamos_pj       → ") + c.yellow(`${map.get("prestamos_pj")}%`));
-if (updated) console.log(c.dim("  actualizado_el     → ") + updated);
+console.log(c.bold("Descuento de cheques - directo con Vertix:"));
+console.log(c.dim("  hasta 45 dias      -> ") + c.yellow(`${v("directo_hasta_45")}%`) + c.dim(` + ${v("gastos_directo_hasta_45")}% gastos = ${total("directo_hasta_45", "gastos_directo_hasta_45")}`));
+console.log(c.dim("  46 dias o mas      -> ") + c.yellow(`${v("directo_desde_46")}%`) + c.dim(` + ${v("gastos_directo_desde_46")}% gastos = ${total("directo_desde_46", "gastos_directo_desde_46")}`));
+console.log("");
+console.log(c.bold("Descuento de cheques - cuenta comitente:"));
+for (const [etiqueta, clave] of [["hasta 30 dias", "comitente_hasta_30"], ["de 31 a 60 dias", "comitente_31_60"], ["61 dias o mas", "comitente_desde_61"], ["FCE (estimado)", "comitente_fce"]]) {
+  console.log(c.dim(`  ${etiqueta.padEnd(18)} -> `) + c.yellow(`${v(clave)}%`) + c.dim(` + ${v("arancel_comitente")}% arancel = ${total(clave, "arancel_comitente")}`));
+}
+console.log("");
+console.log(c.bold("Prestamos (rango):"));
+console.log(c.dim("  prestamos_ph       -> ") + c.yellow(`${v("prestamos_ph")}%`));
+console.log(c.dim("  prestamos_pj       -> ") + c.yellow(`${v("prestamos_pj")}%`));
+if (updated) console.log(c.dim("  actualizado_el     -> ") + updated);
 console.log("");
 console.log(c.green(c.bold("Todo OK. ")) + "El simulador va a usar estas tasas.");

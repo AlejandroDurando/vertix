@@ -21,22 +21,36 @@ export type TipoPrestamo = "personal" | "prendario";
 export type ModalidadCheque = "directo" | "comitente";
 export type InstrumentoCheque = "cheque" | "echeq" | "fce";
 
-export type TasaServicio =
-  | "cheques_directo"
-  | "cheques_comitente"
-  | "prestamos_ph"
-  | "prestamos_pj";
-
 // Las tasas se interpretan como TNA (Tasa Nominal Anual) expresada en porcentaje.
-// Ej.: cheques_directo = 48 → 48% anual. La hoja "tasas" de Google Sheets debe
-// contener estos valores anuales.
-// La tasa total de cheques = tasa de descuento (variable) + arancel de la
-// empresa (hoy 2,5%, no suele variar). Se cargan por separado para que los
-// dueños ajusten la tasa sin tocar el arancel.
+// Ej.: tasa = 48 → 48% anual. La hoja "tasas" de Google Sheets debe contener
+// estos valores anuales.
+//
+// La tasa que paga el vendedor = tasa de descuento + los gastos de Vertix, y
+// las dos dependen de la modalidad y del plazo (confirmado por el cliente el
+// 31/07/2026):
+//   directo    → hasta 45 días 48% + 2%;  de 46 en adelante 72% + 3,5%
+//   comitente  → hasta 30 días 40% + 2,5%; 31 a 60 43% + 2,5%; 61+ 45% + 2,5%
+//   comitente FCE → 40% + 2,5%, sin tramos (depende del pagador de la factura)
+export type TramoTasa = {
+  /** Último día del tramo, inclusive. `null` = sin tope. */
+  hastaDias: number | null;
+  /** Tasa de descuento, TNA en %. */
+  tasa: number;
+  /** Gastos/arancel de Vertix, en % anual, que se suman a la tasa. */
+  gastos: number;
+};
+
+export type TasasCheques = {
+  /** Tramos de la operación directa con Vertix, ordenados por plazo. */
+  directo: TramoTasa[];
+  /** Tramos de la cuenta comitente (echeq), ordenados por plazo. */
+  comitente: TramoTasa[];
+  /** La FCE en comitente no tiene tramos: es una estimación única. */
+  comitenteFce: TramoTasa;
+};
+
 export type Tasas = {
-  cheques_directo: number;
-  cheques_comitente: number;
-  arancel_cheques: number;
+  cheques: TasasCheques;
   prestamos_ph: number;
   prestamos_pj: number;
   actualizado_el: string;
@@ -63,9 +77,11 @@ export type BcraInfo = {
 export type SimuladorChequesOutput = {
   monto_a_recibir: number;
   descuento_total: number;
-  tna_aplicada: number; // % anual TOTAL (interés + arancel)
-  tna_interes: number; // % anual, componente de descuento (variable)
-  arancel: number; // % anual, arancel de la empresa (fijo)
+  tna_aplicada: number; // % anual TOTAL (interés + gastos)
+  tna_interes: number; // % anual, componente de descuento
+  arancel: number; // % anual, gastos de Vertix
+  /** Tramo de plazo aplicado, para mostrarlo en el resultado. */
+  tramo: string;
   modalidad: ModalidadCheque;
   dias_considerados: number;
   // El comprador se acredita el cheque 2/3 días hábiles después de la fecha de
