@@ -11,9 +11,11 @@ import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { formatearCuit } from "@/lib/cuit";
 import {
   MIN_DIAS_HABILES,
+  instrumentoSoloComitente,
   instrumentoSoloDirecto,
   modalidadRequiereMinDias,
 } from "@/lib/validations";
+import { TELEFONO, TELEFONO_URL, WHATSAPP_URL } from "@/lib/contacto";
 import type {
   BcraInfo,
   InstrumentoCheque,
@@ -58,9 +60,15 @@ export function SimuladorForm() {
   const [modalidad, setModalidad] = useState<ModalidadCheque>("directo");
   const [instrumento, setInstrumento] = useState<InstrumentoCheque>("cheque");
 
-  // El cheque físico no se negocia en el mercado: sólo admite modalidad directa.
+  // El cheque físico no se negocia en el mercado (sólo directo) y la FCE sólo
+  // se negocia ahí (sólo comitente). El echeq admite las dos vías.
   const soloDirecto = instrumentoSoloDirecto(instrumento);
-  const modalidadEfectiva: ModalidadCheque = soloDirecto ? "directo" : modalidad;
+  const soloComitente = instrumentoSoloComitente(instrumento);
+  const modalidadEfectiva: ModalidadCheque = soloDirecto
+    ? "directo"
+    : soloComitente
+      ? "comitente"
+      : modalidad;
 
   // El mínimo de 5 días hábiles lo exige el mercado de capitales: sólo rige
   // para la cuenta comitente. Directo con Vertix se puede operar con menos.
@@ -163,7 +171,9 @@ export function SimuladorForm() {
               <Select
                 name="modalidad"
                 label="Modalidad"
-                options={soloDirecto ? [MODALIDAD[0]] : MODALIDAD}
+                options={
+                  soloDirecto ? [MODALIDAD[0]] : soloComitente ? [MODALIDAD[1]] : MODALIDAD
+                }
                 placeholder="Seleccionar..."
                 value={modalidadEfectiva}
                 onChange={(e) => setModalidad(e.target.value as ModalidadCheque)}
@@ -171,7 +181,9 @@ export function SimuladorForm() {
                 hint={
                   soloDirecto
                     ? "El cheque físico se opera únicamente directo con Vertix: en el mercado sólo se negocian echeq y FCE."
-                    : "Con cuenta comitente la tasa es más baja."
+                    : soloComitente
+                      ? "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente."
+                      : "Con cuenta comitente la tasa es más baja."
                 }
                 error={fe("modalidad")}
               />
@@ -225,8 +237,9 @@ export function SimuladorForm() {
           <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
             Con cuenta comitente no podemos tomar valores con vencimiento menor a 5
             días hábiles: lo exige el mercado de capitales. Probá con{" "}
-            <strong>Directo con Vertix</strong> o{" "}
-            <Link href="/contacto" className="font-semibold underline">comunicate con nosotros</Link>{" "}
+            <strong>Directo con Vertix</strong> o llamanos al{" "}
+            <a href={TELEFONO_URL} className="font-semibold underline">{TELEFONO}</a>{" "}
+            (<a href={WHATSAPP_URL} className="font-semibold underline" target="_blank" rel="noreferrer">WhatsApp</a>){" "}
             para ver otra manera de negociación.
           </Alert>
         )}
@@ -236,6 +249,23 @@ export function SimuladorForm() {
             * No se realizan descuentos de cheques propios (cuando el librador y el
             endosatario coinciden). Esos casos se canalizan como préstamo.
           </p>
+        )}
+
+        {/* El BCRA no es la última palabra: una situación mala en un banco no
+            descarta la operación, Vertix puede analizarla a mano. */}
+        {error && fieldError === "bcra" && (
+          <Alert tone="warning" title="No podemos emitir el presupuesto">
+            <p>{error}</p>
+            <p className="mt-2">
+              De todos modos, si querés vender el cheque podés{" "}
+              <Link href="/precalificacion" className="font-semibold underline">
+                enviarnos una pre-calificación
+              </Link>{" "}
+              para que lo analicemos. A veces el librador figura con una situación
+              comprometida en un banco pero está bien en los demás, y si no tiene
+              cheques rechazados igual podemos considerar la compra.
+            </p>
+          </Alert>
         )}
 
         {error && !fieldError && (

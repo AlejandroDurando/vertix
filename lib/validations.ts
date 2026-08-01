@@ -24,8 +24,14 @@ export const instrumentoRequiereMinDias = (i: InstrumentoCheque) => i !== "chequ
  */
 export const instrumentoSoloDirecto = (i: InstrumentoCheque) => i === "cheque";
 
+/** La FCE sólo se negocia en el mercado de capitales, no directo con Vertix. */
+export const instrumentoSoloComitente = (i: InstrumentoCheque) => i === "fce";
+
 export const MSG_CHEQUE_SOLO_DIRECTO =
   'El cheque físico se opera únicamente en forma directa con Vertix: en el mercado de capitales sólo se negocian echeq y FCE. Elegí "Directo con Vertix" o cambiá el instrumento.';
+
+export const MSG_FCE_SOLO_COMITENTE =
+  "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente. Elegí esa modalidad o cambiá el instrumento.";
 
 export function cumpleMinDiasHabiles(fechaISO: string, ahora: Date = hoy()): boolean {
   return diasHabilesEntre(ahora, parseISODate(fechaISO)) >= MIN_DIAS_HABILES;
@@ -175,6 +181,15 @@ export const simuladorChequesSchema = z
       return; // el mínimo de días no aplica a una combinación inválida
     }
 
+    if (instrumentoSoloComitente(data.instrumento) && data.modalidad === "directo") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modalidad"],
+        message: MSG_FCE_SOLO_COMITENTE,
+      });
+      return;
+    }
+
     if (
       modalidadRequiereMinDias(data.modalidad) &&
       !cumpleMinDiasHabiles(data.fecha_pago)
@@ -245,6 +260,18 @@ const estadoCivilSchema = z.enum([
 ]);
 const tipoSocietarioSchema = z.enum(["sa", "sas", "srl", "otra"]);
 
+/**
+ * Carácter con el que firma el representante de una persona jurídica. Se
+ * guardan las etiquetas tal cual porque van impresas en la Nota EPYME.
+ */
+export const CARGOS_FIRMANTE = [
+  "Socio gerente",
+  "Apoderado",
+  "Presidente",
+  "Director",
+  "Administrador titular",
+] as const;
+
 export const altaPersonaFisicaSchema = z
   .object({
     tipo: z.literal("fisica"),
@@ -306,6 +333,8 @@ export const altaPersonaJuridicaSchema = z
     provincia: requerido(120),
     codigo_postal: requerido(12),
     actividad: requerido(160),
+    // Define qué respaldo contable se pide: el balance o las DDJJ de IVA.
+    tiene_eecc: siNo,
     cbu: cbuSchema,
     email: emailSchema,
     email_alternativo: emailSchema,
@@ -313,7 +342,9 @@ export const altaPersonaJuridicaSchema = z
     es_pep: siNo,
     // Firmante / apoderado
     referente_nombre: requerido(160),
-    referente_cargo: requerido(80),
+    // Carácter con el que firma. Es una lista cerrada (pedido del cliente) para
+    // evitar erratas: el valor se usa tal cual en la Nota de Adhesión EPYME.
+    referente_cargo: z.enum(CARGOS_FIRMANTE),
     referente_cuit: cuitSchema,
     referente_dni: dniSchema,
     referente_estado_civil: estadoCivilSchema,

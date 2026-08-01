@@ -14,7 +14,7 @@ npm run dev          # desarrollo (localhost:3000)
 npm run build        # build de producción
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
-npm test             # vitest run — 34 tests
+npm test             # vitest run — 85 tests
 npm run check:sheets # verifica credenciales + tasas leídas de la hoja
 ```
 
@@ -40,12 +40,11 @@ handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve 
   `Precalificacion`) y mandan el email interno (`lib/email.ts`) en paralelo con `Promise.all`.
 - **`/alta`** (AdCap/Sailing) → `multipart/form-data` porque lleva adjuntos. `lib/uploads.ts`
   separa campos de archivos (valida tipo/tamaño, decodifica a base64) de los demás; `parseAlta`
-  determina campos obligatorios según `tipo` (física/jurídica), `alyc` y condiciones (casado,
-  domicilio del DNI, adhesión al Régimen Simplificado de Ganancias en PF). En PJ los estados
-  contables y las DDJJ de IVA de los últimos 6 meses son **ambos** obligatorios desde el
-  25/07/2026 (antes eran alternativos). `lib/nota-epyme.ts` genera el HTML de la Nota de Adhesión
-  EPYME pre-llenada
-  que el usuario descarga, firma y vuelve a subir como uno de los adjuntos. Persiste en
+  determina campos obligatorios según `tipo` (física/jurídica) y condiciones (casado, adhesión al
+  Régimen Simplificado de Ganancias en PF). En PJ el campo `tiene_eecc` decide qué respaldo contable
+  se exige: el balance certificado por el CPCE o las DDJJ de IVA de los últimos 6 meses.
+  `lib/nota-epyme.ts` genera la Nota de Adhesión EPYME **en .docx** (vía `POST /api/nota-epyme`),
+  pre-llenada, que el usuario descarga, firma y vuelve a subir como uno de los adjuntos. Persiste en
   `sheets-crm.ts` (pestañas `AltasPF`/`AltasPJ`) + `email.ts` (adjuntos van en el email, no se
   guardan — ver pendiente #1 abajo) en paralelo.
 
@@ -147,25 +146,9 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Decidido pero NO reflejado en el código
 
-- **Tasas por instrumento**: el cliente confirmó que echeq, FCE y cheque físico tienen tasas
-  distintas (el físico más alta). Hoy el campo `instrumento` se valida y se pide, pero **no afecta
-  el cálculo** — las tres cotizan igual. Falta que Martín (Vertix) pase las tasas concretas; cuando
-  lleguen hay que reestructurar la hoja con una fila por instrumento.
-- **Tasas de echeq por tramo de plazo** (25/07/2026): ≤30 días 40%, 31–60 días 43%, ≥61 días 45%,
-  siempre + 2,5% de arancel. **No implementado**: la hoja y el tipo `Tasas` son planos (una tasa por
-  servicio), hay que reestructurarlos a instrumento × tramo. Faltan además las tasas de cheque
-  físico y FCE, y definir si esos tres valores son sólo los de cuenta comitente.
-- **Teléfono de contacto**: la leyenda de cheques con vencimiento <5 días hábiles debe invitar a
-  llamar. Hoy linkea a `/contacto` porque **no definieron el número** (ni si es llamada o WhatsApp).
-- **Modalidad atada al instrumento**: el cheque físico ya está restringido a "directo con Vertix"
-  (`instrumentoSoloDirecto`). Falta confirmar lo inverso — si un echeq puede ir directo. Si no
-  puede, el selector de modalidad sobra porque se deduce del instrumento.
-- **Sobre qué días corre el descuento**: el resultado ya muestra las dos acreditaciones (vendedor =
-  día de la operación, comprador = fecha de pago + 2/3 hábiles), pero el interés se sigue
-  calculando hasta la del comprador. Falta que el cliente defina si es correcto.
-- **Nota EPYME en Word**: piden que no aparezcan el encabezado y el pie del navegador al imprimir, y
-  proponen un `.docx` con "XXXX" en los campos a completar. **No implementado**: hay que decidir
-  entre eso (pierde el pre-llenado) o generar el archivo en el servidor.
+- **DDJJ del Régimen Simplificado**: el formulario ya ofrece descargar
+  `public/documentos/ddjj-actividad-licita.docx`, pero **no se pide la firmada como adjunto**: falta
+  que el cliente confirme si la reciben por fuera y si también aplica a personas jurídicas.
 - **Tasa de cheques 48%**: el código y el fallback ya usan 48 + 2,5 de arancel, pero **la hoja
   todavía dice 43 y no tiene la fila `arancel_cheques`** (no pude escribirla, ver permisos arriba).
   Hasta que se corrija a mano, producción cotiza 45,5% en vez de 50,5%.
@@ -200,8 +183,5 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Falta información / a confirmar
 
-- Tasas por instrumento (echeq / FCE / cheque físico) — las debe Martín.
-- Teléfono de contacto para la leyenda de <5 días hábiles.
-- ¿El descuento se calcula hasta la acreditación (como está) o hasta la fecha de pago?
 - Sailing: ¿CBU y Nota EPYME obligatorios? ¿Co-titularidad?
-- Valor real de la tasa para modalidad comitente (hoy 35% es un supuesto mío, no confirmado).
+- ¿La DDJJ de actividad lícita firmada se pide como adjunto en el alta? ¿Aplica también a PJ?

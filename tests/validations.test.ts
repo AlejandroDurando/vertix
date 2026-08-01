@@ -93,6 +93,20 @@ describe("simulador de cheques — instrumento y modalidad", () => {
     expect(simulador({ instrumento: "echeq", modalidad: "comitente" }).success).toBe(true);
     expect(simulador({ instrumento: "fce", modalidad: "comitente" }).success).toBe(true);
   });
+
+  // La FCE es lo inverso al cheque físico: sólo se negocia en el mercado.
+  it("rechaza la FCE directo con Vertix", () => {
+    const res = simulador({ instrumento: "fce", modalidad: "directo" });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["modalidad"]);
+    }
+  });
+
+  it("acepta el echeq por las dos vías", () => {
+    expect(simulador({ instrumento: "echeq", modalidad: "directo" }).success).toBe(true);
+    expect(simulador({ instrumento: "echeq", modalidad: "comitente" }).success).toBe(true);
+  });
 });
 
 describe("precalificación de cheques — mínimo de días hábiles por instrumento", () => {

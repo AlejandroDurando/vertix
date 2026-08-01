@@ -12,19 +12,15 @@ import {
   mensajeExcedido,
   subirAdjuntos,
 } from "@/lib/adjuntos-client";
-import { notaEpymeHtml } from "@/lib/nota-epyme";
+import { CARGOS_FIRMANTE } from "@/lib/validations";
+import type { NotaEpymeInput } from "@/lib/nota-epyme";
 
 type TipoAlta = "fisica" | "juridica";
-type Alyc = "adcap" | "sailing";
 
 const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
 const SI_NO = [
   { value: "no", label: "No" },
   { value: "si", label: "Sí" },
-];
-const ALYC = [
-  { value: "adcap", label: "AdCap" },
-  { value: "sailing", label: "Sailing Inversiones" },
 ];
 const ESTADO_CIVIL = [
   { value: "soltero", label: "Soltero/a" },
@@ -39,6 +35,10 @@ const TIPO_SOCIETARIO = [
   { value: "srl", label: "S.R.L." },
   { value: "otra", label: "Otra" },
 ];
+const CARGOS = CARGOS_FIRMANTE.map((c) => ({ value: c, label: c }));
+
+/** DDJJ de Actividad Lícita que pide AdCap a quien adhiere al régimen simplificado. */
+const URL_DDJJ_ACTIVIDAD = "/documentos/ddjj-actividad-licita.docx";
 
 function field(fd: FormData, name: string): string {
   return String(fd.get(name) ?? "").trim();
@@ -46,18 +46,17 @@ function field(fd: FormData, name: string): string {
 
 export function AltaForm() {
   const [tipo, setTipo] = useState<TipoAlta>("fisica");
-  const [alyc, setAlyc] = useState<Alyc | "">("");
   const [estadoCivil, setEstadoCivil] = useState("");
   const [refEstadoCivil, setRefEstadoCivil] = useState("");
   const [tipoSocietario, setTipoSocietario] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [generandoNota, setGenerandoNota] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | undefined>();
   const formRef = useRef<HTMLFormElement>(null);
 
   function resetConditionals() {
-    setAlyc("");
     setEstadoCivil("");
     setRefEstadoCivil("");
     setTipoSocietario("");
@@ -114,16 +113,19 @@ export function AltaForm() {
     }
   }
 
-  function generarNota() {
+  async function generarNota() {
     const f = formRef.current;
     if (!f) return;
+    setGenerandoNota(true);
+    setError(null);
     const fd = new FormData(f);
-    const alycVal = (field(fd, "alyc") || "adcap") as Alyc;
 
-    const html =
+    // El correo que va en la nota: en persona jurídica el alternativo, en
+    // persona física el principal (pedido del cliente, 31/07/2026).
+    const payload: NotaEpymeInput =
       tipo === "fisica"
-        ? notaEpymeHtml({
-            alyc: alycVal,
+        ? {
+            alyc: "adcap",
             esPersonaJuridica: false,
             caracterDomicilio: field(fd, "domicilio"),
             adminNombre: `${field(fd, "nombre")} ${field(fd, "apellido")}`.trim(),
@@ -136,28 +138,44 @@ export function AltaForm() {
             firmante: `${field(fd, "apellido")}, ${field(fd, "nombre")}`.replace(/^, |, $/g, ""),
             firmanteCuit: field(fd, "cuit"),
             firmanteCargo: "Titular",
-          })
-        : notaEpymeHtml({
-            alyc: alycVal,
+          }
+        : {
+            alyc: "adcap",
             esPersonaJuridica: true,
             razonSocial: field(fd, "razon_social"),
             caracterDomicilio: field(fd, "domicilio_legal"),
             adminNombre: field(fd, "referente_nombre"),
-            adminEmail: field(fd, "referente_email"),
+            adminEmail: field(fd, "email_alternativo"),
             adminDni: field(fd, "referente_dni"),
             adminCuit: field(fd, "referente_cuit"),
             adminTelefono: field(fd, "referente_telefono"),
             adminDomicilioLegal: field(fd, "domicilio_legal"),
-            adminCargo: field(fd, "referente_cargo") || "XXXX",
+            adminCargo: field(fd, "referente_cargo"),
             firmante: field(fd, "razon_social"),
             firmanteCuit: field(fd, "cuit"),
-            firmanteCargo: field(fd, "referente_cargo") || "XXXX",
-          });
+            firmanteCargo: field(fd, "referente_cargo"),
+          };
 
-    const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
+    try {
+      const res = await fetch("/api/nota-epyme", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("no se pudo generar");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "nota-adhesion-epyme.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("No pudimos generar la nota en este momento. Intentá nuevamente.");
+    } finally {
+      setGenerandoNota(false);
     }
   }
 
@@ -187,32 +205,18 @@ export function AltaForm() {
         noValidate
       >
         <Section title="Sociedad de bolsa (ALyC)">
-          {tipo === "fisica" ? (
-            <Select
-              name="alyc"
-              label="¿Dónde abrís la cuenta?"
-              required
-              options={ALYC}
-              placeholder="Seleccionar..."
-              value={alyc}
-              onChange={(e) => setAlyc(e.target.value as Alyc)}
-              error={fe("alyc")}
-            />
-          ) : (
-            <div className="md:col-span-2">
-              <input type="hidden" name="alyc" value="adcap" />
-              <p className="text-sm text-vertix/70">
-                Las cuentas de personas jurídicas se abren en <strong>AdCap</strong>.
-                Si necesitás una excepción, contactanos.
-              </p>
-            </div>
-          )}
+          <div className="md:col-span-2">
+            <input type="hidden" name="alyc" value="adcap" />
+            <p className="text-sm text-vertix/70">
+              La apertura se realiza en <strong>AdCap</strong>. Si necesitás una
+              excepción, contactanos.
+            </p>
+          </div>
         </Section>
 
         {tipo === "fisica" ? (
           <FisicaFields
             fe={fe}
-            alyc={alyc}
             estadoCivil={estadoCivil}
             setEstadoCivil={setEstadoCivil}
           />
@@ -226,7 +230,7 @@ export function AltaForm() {
           />
         )}
 
-        <NotaEpymeBlock fe={fe} onGenerar={generarNota} />
+        <NotaEpymeBlock fe={fe} onGenerar={generarNota} generando={generandoNota} />
 
         {error && !fieldError && (
           <Alert tone="error" title="No pudimos enviar el alta">
@@ -265,18 +269,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function FisicaFields({
   fe,
-  alyc,
   estadoCivil,
   setEstadoCivil,
 }: {
   fe: FE;
-  alyc: string;
   estadoCivil: string;
   setEstadoCivil: (v: string) => void;
 }) {
   const casado = estadoCivil === "casado";
-  const sailing = alyc === "sailing";
-  const [domicilioDniActual, setDomicilioDniActual] = useState("");
   const [regimenSimplificado, setRegimenSimplificado] = useState("");
   return (
     <>
@@ -313,23 +313,19 @@ function FisicaFields({
         />
         <Select name="es_pep" label="¿Persona Expuesta Políticamente?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_pep")} />
         <Input name="cbu" label="CBU" required inputMode="numeric" placeholder="22 dígitos" error={fe("cbu")} />
-        {sailing && (
-          <Select
-            name="domicilio_dni_actual"
-            label="¿El domicilio de tu DNI es el actual?"
-            required
-            options={[
-              { value: "si", label: "Sí" },
-              { value: "no", label: "No" },
-            ]}
-            placeholder="Seleccionar..."
-            value={domicilioDniActual}
-            onChange={(e) => setDomicilioDniActual(e.target.value)}
-            hint="Si no lo es, vas a tener que adjuntar un servicio a tu nombre."
-            error={fe("domicilio_dni_actual")}
-          />
-        )}
       </Section>
+
+      {regimenSimplificado === "si" && (
+        <Alert tone="info" title="Declaración jurada de actividad lícita">
+          Como adherís al Régimen Simplificado, AdCap pide además una declaración
+          jurada de actividad lícita.{" "}
+          <a href={URL_DDJJ_ACTIVIDAD} download className="font-semibold underline">
+            Descargá el formulario
+          </a>
+          , completalo y firmalo. Te lo vamos a pedir junto con el resto de la
+          documentación.
+        </Alert>
+      )}
 
       <Section title="Domicilio">
         <Input name="domicilio" label="Domicilio" required error={fe("domicilio")} />
@@ -357,10 +353,10 @@ function FisicaFields({
         <FileInput name="constancia_cbu" label="Constancia de CBU" required accept={ACCEPT} error={fe("constancia_cbu")} />
         <FileInput
           name="selfie_dni"
-          label="Foto selfie con DNI"
+          label="Selfie"
           required
           accept={ACCEPT}
-          hint="Sostené el DNI junto a tu cara, que se lean los datos."
+          hint="Una foto tuya, de frente y con buena luz."
           error={fe("selfie_dni")}
         />
         {regimenSimplificado === "si" && (
@@ -371,35 +367,6 @@ function FisicaFields({
             accept={ACCEPT}
             error={fe("constancia_regimen_simplificado")}
           />
-        )}
-        {sailing && (
-          <>
-            <FileInput
-              name="foto_aleatoria"
-              label="Foto aleatoria"
-              required
-              accept={ACCEPT}
-              hint="Por ejemplo, levantando la palma de la mano derecha."
-              error={fe("foto_aleatoria")}
-            />
-            {domicilioDniActual === "no" && (
-              <FileInput
-                name="servicio_titular"
-                label="Servicio a nombre del titular"
-                required
-                accept={ACCEPT}
-                hint="Luz, gas, teléfono, etc., con tu domicilio actual."
-                error={fe("servicio_titular")}
-              />
-            )}
-            <FileInput
-              name="constancia_ingresos"
-              label="Últimos 3 recibos de sueldo o constancia de monotributo"
-              accept={ACCEPT}
-              hint="Si no contás con ninguna, se te asignará un cupo operativo según tu nivel socioeconómico."
-              error={fe("constancia_ingresos")}
-            />
-          </>
         )}
         {casado && (
           <>
@@ -427,6 +394,8 @@ function JuridicaFields({
 }) {
   const conRegistroAcciones = tipoSocietario === "sa" || tipoSocietario === "sas";
   const casado = refEstadoCivil === "casado";
+  // Si la empresa no tiene el balance certificado, se piden las DDJJ de IVA.
+  const [tieneEecc, setTieneEecc] = useState("");
   return (
     <>
       <Section title="Datos de la empresa">
@@ -444,6 +413,17 @@ function JuridicaFields({
         />
         <Input name="fecha_constitucion" label="Fecha de constitución" required type="date" error={fe("fecha_constitucion")} />
         <Input name="actividad" label="Actividad principal" required error={fe("actividad")} />
+        <Select
+          name="tiene_eecc"
+          label="¿Cuentan con el último EECC pasado por el CPCE?"
+          required
+          options={SI_NO}
+          placeholder="Seleccionar..."
+          value={tieneEecc}
+          onChange={(e) => setTieneEecc(e.target.value)}
+          hint="Si no lo tienen, se piden las DDJJ de IVA de los últimos 6 meses."
+          error={fe("tiene_eecc")}
+        />
         <Select name="es_pep" label="¿Algún socio/autoridad es PEP?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_pep")} />
         <Input name="cbu" label="CBU de la empresa" required inputMode="numeric" placeholder="22 dígitos" error={fe("cbu")} />
       </Section>
@@ -463,7 +443,16 @@ function JuridicaFields({
 
       <Section title="Firmante / apoderado">
         <Input name="referente_nombre" label="Nombre y apellido" required error={fe("referente_nombre")} />
-        <Input name="referente_cargo" label="Cargo" required placeholder="Presidente, apoderado, etc." error={fe("referente_cargo")} />
+        <Select
+          name="referente_cargo"
+          label="Carácter con el que firma"
+          required
+          options={CARGOS}
+          placeholder="Seleccionar..."
+          defaultValue=""
+          hint="Es el carácter que va a figurar en la Nota de Adhesión EPYME."
+          error={fe("referente_cargo")}
+        />
         <Input name="referente_cuit" label="CUIT / CUIL del firmante" required inputMode="numeric" placeholder="Sólo números" error={fe("referente_cuit")} />
         <Input name="referente_dni" label="DNI del firmante" required inputMode="numeric" placeholder="Sólo números" error={fe("referente_dni")} />
         <Select
@@ -484,9 +473,9 @@ function JuridicaFields({
         <div className="md:col-span-2">
           <Textarea
             name="datos_socios"
-            label="Datos de socios y firmantes"
+            label="Datos de socios y firmantes, con su participación en el capital"
             required
-            hint="Profesión, estado civil y lugar de nacimiento de cada socio o firmante que no figure en el estatuto."
+            hint="De cada socio o firmante que no figure en el estatuto: nombre, profesión, estado civil, lugar de nacimiento y qué porcentaje del capital tiene."
             error={fe("datos_socios")}
           />
         </div>
@@ -507,8 +496,26 @@ function JuridicaFields({
         <FileInput name="constancia_cuit" label="Constancia de CUIT" required accept={ACCEPT} error={fe("constancia_cuit")} />
         <FileInput name="constancia_cbu" label="Constancia de CBU" required accept={ACCEPT} error={fe("constancia_cbu")} />
         <FileInput name="dni_socios" label="DNI de los socios (frente y dorso)" required accept={ACCEPT} hint="Podés subir un PDF con todos." error={fe("dni_socios")} />
-        <FileInput name="eecc" label="Estados contables (CPCE)" required accept={ACCEPT} hint="Certificados por el Consejo Profesional." error={fe("eecc")} />
-        <FileInput name="ddjj" label="DDJJ de IVA de los últimos 6 meses" required accept={ACCEPT} hint="Podés subir un PDF con las 6." error={fe("ddjj")} />
+        {tieneEecc === "si" && (
+          <FileInput
+            name="eecc"
+            label="Estados contables (CPCE)"
+            required
+            accept={ACCEPT}
+            hint="El último ejercicio, certificado por el Consejo Profesional."
+            error={fe("eecc")}
+          />
+        )}
+        {tieneEecc === "no" && (
+          <FileInput
+            name="ddjj"
+            label="DDJJ de IVA de los últimos 6 meses"
+            required
+            accept={ACCEPT}
+            hint="Con los acuses de presentación. Podés subir un PDF con todas."
+            error={fe("ddjj")}
+          />
+        )}
         {casado && (
           <>
             <FileInput name="conyuge_dni_frente" label="DNI del cónyuge del firmante (frente)" required accept={ACCEPT} error={fe("conyuge_dni_frente")} />
@@ -520,19 +527,27 @@ function JuridicaFields({
   );
 }
 
-function NotaEpymeBlock({ fe, onGenerar }: { fe: FE; onGenerar: () => void }) {
+function NotaEpymeBlock({
+  fe,
+  onGenerar,
+  generando,
+}: {
+  fe: FE;
+  onGenerar: () => void;
+  generando: boolean;
+}) {
   return (
     <fieldset className="flex flex-col gap-4 rounded-xl border border-vertix/15 bg-vertix/5 p-5">
       <legend className="px-2 text-sm font-semibold uppercase tracking-wide text-vertix/60">
         Nota de Adhesión EPYME
       </legend>
       <p className="text-sm text-vertix/70">
-        Generá la nota pre-llenada con los datos cargados arriba, imprimila o guardala
-        en PDF, firmala y volvé a subirla acá.
+        Descargá la nota en Word, ya completa con los datos cargados arriba.
+        Imprimila, firmala y volvé a subirla acá.
       </p>
       <div>
-        <Button type="button" variant="secondary" onClick={onGenerar}>
-          Generar Nota EPYME
+        <Button type="button" variant="secondary" onClick={onGenerar} loading={generando}>
+          Descargar Nota EPYME
         </Button>
       </div>
       <FileInput

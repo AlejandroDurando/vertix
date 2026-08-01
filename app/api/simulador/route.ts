@@ -48,7 +48,10 @@ export async function POST(req: NextRequest) {
           cuit: libradorRes.cuit,
           situacion: libradorRes.situacionMaxima,
         });
-        return fail(evLibrador.motivo, 403);
+        // El campo "bcra" le dice al formulario que ofrezca la precalificación:
+        // una situación mala en un banco no descarta la operación, Vertix puede
+        // analizarla a mano (pedido del cliente, 31/07/2026).
+        return fail(evLibrador.motivo, 403, "bcra");
       }
 
       const result = simularCheques(parsed.data, tasas);

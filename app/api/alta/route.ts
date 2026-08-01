@@ -44,7 +44,7 @@ const LABELS: Record<string, string> = {
   constancia_regimen_simplificado:
     "Constancia de adhesión al Régimen Simplificado de Ganancias",
   nota_epyme_firmada: "Nota de Adhesión EPYME firmada",
-  selfie_dni: "Foto selfie con DNI",
+  selfie_dni: "Selfie",
   foto_aleatoria: "Foto aleatoria (ej. palma derecha levantada)",
   servicio_titular: "Servicio a nombre del titular",
   constancia_ingresos: "Últimos 3 recibos de sueldo o constancia de monotributo",
@@ -52,8 +52,8 @@ const LABELS: Record<string, string> = {
   registro_acciones: "Libro de Registro de Acciones",
   constancia_cuit: "Constancia de CUIT",
   dni_socios: "DNI de los socios",
-  eecc: "Estados contables (CPCE)",
-  ddjj: "DDJJ de IVA de los últimos 6 meses",
+  eecc: "Estados contables certificados por el CPCE",
+  ddjj: "DDJJ de IVA de los últimos 6 meses con acuses de presentación",
 };
 
 export async function POST(req: NextRequest) {
@@ -121,12 +121,11 @@ export async function POST(req: NextRequest) {
       "constancia_cbu",
       "constancia_cuit",
       "dni_socios",
-      // Desde el 25/07/2026 los EECC y las DDJJ de IVA se piden juntos: ya no
-      // son alternativos ("uno u otro").
-      "eecc",
-      "ddjj",
       "nota_epyme_firmada"
     );
+    // El respaldo contable depende de si la empresa tiene el último balance
+    // certificado por el CPCE; si no lo tiene, van las DDJJ de IVA.
+    required.push(data.tiene_eecc === "si" ? "eecc" : "ddjj");
     if (data.tipo_societario === "sa" || data.tipo_societario === "sas") {
       required.push("registro_acciones");
     }

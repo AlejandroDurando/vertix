@@ -79,6 +79,14 @@ export async function POST(req: NextRequest) {
         "titulo_automotor"
       );
     }
+    // Obligatoria desde el 31/07/2026 (antes sumaba pero no bloqueaba).
+    if (!presente("constancia_cuit")) {
+      return fail(
+        "Adjuntá la constancia de CUIT (persona jurídica) o de CUIL/DNI (persona física).",
+        400,
+        "constancia_cuit"
+      );
+    }
   }
 
   // Enriquecimiento BCRA (informativo, no bloquea la precalificación).

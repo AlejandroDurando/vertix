@@ -177,5 +177,7 @@ export async function appendAlta(
     data.conyuge_nombre ?? "",
     data.conyuge_dni ?? "",
     docs,
+    // Agregado al final para no correr las columnas ya cargadas.
+    data.tiene_eecc,
   ]);
 }

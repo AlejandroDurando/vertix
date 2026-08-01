@@ -15,6 +15,7 @@ import {
 } from "@/lib/adjuntos-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { MIN_DIAS_HABILES, instrumentoRequiereMinDias } from "@/lib/validations";
+import { TELEFONO, TELEFONO_URL, WHATSAPP_URL } from "@/lib/contacto";
 import type { InstrumentoCheque } from "@/types";
 
 type Servicio = "cheques" | "prestamos";
@@ -271,8 +272,9 @@ export function PrecalificacionForm() {
           <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
             Los echeq y las FCE se negocian en el mercado de capitales, que exige un
             vencimiento mínimo de 5 días hábiles. Si es un cheque físico, elegí{" "}
-            <strong>Cheque</strong> como instrumento; si no,{" "}
-            <Link href="/contacto" className="font-semibold underline">comunicate con nosotros</Link>{" "}
+            <strong>Cheque</strong> como instrumento; si no, llamanos al{" "}
+            <a href={TELEFONO_URL} className="font-semibold underline">{TELEFONO}</a>{" "}
+            (<a href={WHATSAPP_URL} className="font-semibold underline" target="_blank" rel="noreferrer">WhatsApp</a>){" "}
             y vemos otra manera de negociación.
           </Alert>
         )}
@@ -299,9 +301,10 @@ export function PrecalificacionForm() {
             )}
             <FileInput
               name="constancia_cuit"
-              label="Constancia de CUIT (PJ) o CUIL/DNI (PF) — opcional"
+              label="Constancia de CUIT (PJ) o CUIL/DNI (PF)"
+              required
               accept={ACCEPT}
-              hint="Sumar este adjunto agiliza la evaluación. PDF o imagen, máx. 5MB."
+              hint="PDF o imagen, máx. 5MB."
               error={fe("constancia_cuit")}
             />
           </div>
