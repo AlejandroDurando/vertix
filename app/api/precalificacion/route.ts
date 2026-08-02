@@ -3,7 +3,7 @@ import { firstZodError, precalificacionSchema } from "@/lib/validations";
 import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { readUploads, type ParsedFile, type SubidoRef } from "@/lib/uploads";
-import { enlaceDescarga } from "@/lib/storage";
+import { carpetaDe, enlaceDescarga, enlaceLegajo } from "@/lib/storage";
 import { appendPrecalificacion } from "@/lib/sheets-crm";
 import { emailConfirmacionPrecalificacion, emailPrecalificacion } from "@/lib/email";
 import { upsertHubspotContact } from "@/lib/hubspot";
@@ -113,6 +113,9 @@ export async function POST(req: NextRequest) {
     base64: f.base64,
   }));
 
+  const carpetaLegajo = Object.values(subidos)[0]
+    ? carpetaDe(Object.values(subidos)[0].clave)
+    : "";
   const enlaces = Object.entries(subidos).map(([campo, ref]) => ({
     etiqueta: campo,
     nombre: ref.nombre,
@@ -122,8 +125,8 @@ export async function POST(req: NextRequest) {
   // Todo awaited: en serverless los fire-and-forget se cancelan al responder.
   const [sheetsRes, emailRes] = await Promise.all([
     appendPrecalificacion(data, sentAt, {
-      adjuntos: enlaces.length
-        ? enlaces.map((e) => `${e.etiqueta}: ${e.url}`)
+      adjuntos: carpetaLegajo
+        ? [enlaceLegajo(carpetaLegajo)]
         : adjuntos.map((a) => a.campo),
       bcra: bcraResumen,
     }),

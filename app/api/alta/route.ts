@@ -5,7 +5,7 @@ import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { readUploads } from "@/lib/uploads";
 import { appendAlta } from "@/lib/sheets-crm";
 import { emailAlta, emailConfirmacionAlta } from "@/lib/email";
-import { enlaceDescarga } from "@/lib/storage";
+import { carpetaDe, enlaceDescarga, enlaceLegajo } from "@/lib/storage";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -149,11 +149,13 @@ export async function POST(req: NextRequest) {
     url: enlaceDescarga(ref.clave),
   }));
 
-  // En la planilla queda el enlace al documento cuando está en el bucket; si
-  // viajó por email, sólo el nombre del campo (no hay copia recuperable).
-  const paraSheets = enlaces.length
-    ? enlaces.map((e) => `${e.etiqueta}: ${e.url}`)
-    : adjuntos.map((a) => a.campo);
+  // En la planilla queda UN enlace por fila, al legajo completo: abrirlo de a
+  // un documento desde una celda era impracticable. Si los archivos viajaron
+  // por email, sólo queda el nombre del campo (no hay copia recuperable).
+  const carpeta = Object.values(subidos)[0]
+    ? carpetaDe(Object.values(subidos)[0].clave)
+    : "";
+  const paraSheets = carpeta ? [enlaceLegajo(carpeta)] : adjuntos.map((a) => a.campo);
 
   // Todo awaited: en serverless los fire-and-forget se cancelan al responder.
   const [sheetsRes, emailRes] = await Promise.all([

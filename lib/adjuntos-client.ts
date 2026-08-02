@@ -127,6 +127,10 @@ export async function subirAdjuntos(
   });
   if (entradas.length === 0) return "ok";
 
+  // Un id por envío: agrupa todos los documentos en una misma carpeta del
+  // bucket, que es lo que después se abre como legajo.
+  const tramiteId = crypto.randomUUID();
+
   for (const [campo, file] of entradas) {
     let firma: Response;
     try {
@@ -135,6 +139,7 @@ export async function subirAdjuntos(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tramite,
+          tramiteId,
           campo,
           nombre: file.name,
           tipo: file.type,

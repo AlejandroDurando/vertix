@@ -54,6 +54,14 @@ mandan sólo `<campo>__clave` + `<campo>__nombre`. `lib/uploads.ts` los devuelve
 los chequeos de obligatorios un documento cuenta igual venga por `files` o por `subidos`. Antes de
 subir, `lib/adjuntos-client.ts` comprime las imágenes en el navegador.
 
+**El legajo es la carpeta.** Todos los documentos de un envío comparten el `tramiteId` que genera el
+navegador, así que la clave queda `tramite/fecha/<id>/campo-nombre` y la carpeta se puede listar
+entera. En el CRM va **un solo enlace por fila** (`enlaceLegajo`) a `/legajo`, que muestra los
+documentos con las fotos previsualizadas y un botón para bajar todo en un zip
+(`/api/adjuntos/zip`). Se probó poner un enlace por documento en la misma celda y es impracticable:
+Sheets no los hace clicables por separado. La página no tiene login: el acceso depende del token de
+la carpeta, igual que los documentos sueltos.
+
 Todas las rutas comparten `lib/rate-limit.ts` (in-memory por IP, ver pendiente #5) y `lib/logger.ts`
 (logger JSON que redacta PII). `lib/hubspot.ts` se llama desde contacto/precalificación pero es un
 stub inactivo (ver tabla de integraciones).

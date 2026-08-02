@@ -11,6 +11,9 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   tramite: z.enum(["alta", "precalificacion"]),
+  // Identificador del envío: lo genera el navegador y lo repite en cada
+  // documento, para que todos caigan en la misma carpeta (el legajo).
+  tramiteId: z.string().uuid(),
   campo: z.string().trim().min(1).max(60),
   nombre: z.string().trim().min(1).max(200),
   tipo: z.string().trim().refine((t) => ALLOWED_FILE_TYPES.includes(t), {
@@ -51,8 +54,8 @@ export async function POST(req: NextRequest) {
     return fail(message, 400, field);
   }
 
-  const { tramite, campo, nombre, tipo } = parsed.data;
-  const clave = construirClave({ tramite, campo, nombre });
+  const { tramite, tramiteId, campo, nombre, tipo } = parsed.data;
+  const clave = construirClave({ tramite, tramiteId, campo, nombre });
 
   try {
     const url = await firmarSubida({ clave, tipo });

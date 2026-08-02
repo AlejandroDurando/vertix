@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  carpetaDe,
   construirClave,
   enlaceDescarga,
   normalizarNombre,
@@ -51,20 +52,39 @@ describe("normalizarNombre", () => {
 });
 
 describe("construirClave", () => {
-  it("agrupa por trámite y fecha", () => {
+  const ID = "3f2a1b7c-1111-4222-8333-444455556666";
+
+  it("agrupa por trámite, fecha e id del envío", () => {
     const clave = construirClave({
       tramite: "alta",
+      tramiteId: ID,
       campo: "dni_frente",
       nombre: "foto.jpg",
       fecha: new Date("2026-07-26T12:00:00Z"),
     });
-    expect(clave.startsWith("alta/2026-07-26/")).toBe(true);
-    expect(clave.endsWith("dni_frente-foto.jpg")).toBe(true);
+    expect(clave).toBe(`alta/2026-07-26/${ID}/dni_frente-foto.jpg`);
   });
 
-  it("no repite la clave para el mismo archivo", () => {
-    const args = { tramite: "alta", campo: "dni_frente", nombre: "foto.jpg" };
-    expect(construirClave(args)).not.toBe(construirClave(args));
+  // Todos los documentos de un envío tienen que caer en la misma carpeta:
+  // eso es lo que permite abrir el legajo completo con un solo enlace.
+  it("pone los documentos del mismo envío en una carpeta común", () => {
+    const base = { tramite: "alta", tramiteId: ID, fecha: new Date("2026-07-26T12:00:00Z") };
+    const a = construirClave({ ...base, campo: "dni_frente", nombre: "a.jpg" });
+    const b = construirClave({ ...base, campo: "selfie_dni", nombre: "b.jpg" });
+    expect(carpetaDe(a)).toBe(carpetaDe(b));
+    expect(carpetaDe(a)).toBe(`alta/2026-07-26/${ID}/`);
+  });
+
+  it("ignora un id que no sea un UUID", () => {
+    const clave = construirClave({
+      tramite: "alta",
+      tramiteId: "../../otra-carpeta",
+      campo: "dni_frente",
+      nombre: "foto.jpg",
+      fecha: new Date("2026-07-26T12:00:00Z"),
+    });
+    expect(clave).not.toContain("..");
+    expect(clave.split("/")).toHaveLength(4);
   });
 });
 
