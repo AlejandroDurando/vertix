@@ -44,7 +44,9 @@ handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve 
   Régimen Simplificado de Ganancias en PF). En PJ el campo `tiene_eecc` decide qué respaldo contable
   se exige: el balance certificado por el CPCE o las DDJJ de IVA de los últimos 6 meses.
   `lib/nota-epyme.ts` genera la Nota de Adhesión EPYME **en .docx** (vía `POST /api/nota-epyme`),
-  pre-llenada, que el usuario descarga, firma y vuelve a subir como uno de los adjuntos. Persiste en
+  pre-llenada, que el usuario descarga, firma y vuelve a subir como uno de los adjuntos. Es el
+  **único adjunto que acepta Word** además de PDF/imagen (`tiposPermitidos()` en
+  `lib/validations.ts`), porque quien la firma en la computadora la devuelve en el mismo `.docx`. Persiste en
   `sheets-crm.ts` (pestañas `AltasPF`/`AltasPJ`) + `email.ts` (adjuntos van en el email, no se
   guardan — ver pendiente #1 abajo) en paralelo.
 
