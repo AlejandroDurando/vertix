@@ -404,6 +404,30 @@ export const ALLOWED_FILE_TYPES = [
   "image/png",
   "image/webp",
 ];
+
+/**
+ * La Nota EPYME es el único documento que generamos nosotros, y se descarga en
+ * Word: quien la firma digitalmente en vez de imprimirla la devuelve en ese
+ * mismo formato. El resto de los documentos siempre llega escaneado o
+ * fotografiado, así que no hay motivo para abrirles la puerta a Word.
+ */
+export const WORD_FILE_TYPES = [
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+];
+export const CAMPOS_ACEPTAN_WORD = ["nota_epyme_firmada"];
+
+export function tiposPermitidos(campo?: string): string[] {
+  return CAMPOS_ACEPTAN_WORD.includes(campo ?? "")
+    ? [...ALLOWED_FILE_TYPES, ...WORD_FILE_TYPES]
+    : ALLOWED_FILE_TYPES;
+}
+
+/** Formatos aceptados en texto, para los mensajes de error. */
+export function formatosPermitidos(campo?: string): string {
+  return CAMPOS_ACEPTAN_WORD.includes(campo ?? "") ? "PDF, imagen o Word" : "PDF o imagen";
+}
+
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB por archivo
 
 export function firstZodError(error: z.ZodError): {

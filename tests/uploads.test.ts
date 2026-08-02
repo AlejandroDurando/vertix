@@ -50,3 +50,50 @@ describe("readUploads — referencias a archivos ya subidos al bucket", () => {
     expect(r.subidos).toEqual({});
   });
 });
+
+describe("readUploads — formatos permitidos", () => {
+  const DOCX =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+  const conArchivo = (campo: string, nombre: string, tipo: string) => {
+    const fd = new FormData();
+    fd.set(campo, new File(["contenido"], nombre, { type: tipo }));
+    return fd;
+  };
+
+  // La Nota EPYME se descarga en Word: si se firma en la computadora, vuelve
+  // en ese mismo formato y tiene que poder subirse.
+  it("acepta el Word firmado en la Nota EPYME", async () => {
+    const r = await readUploads(
+      conArchivo("nota_epyme_firmada", "nota.docx", DOCX),
+      { fileFields: ["nota_epyme_firmada"] }
+    );
+    if ("error" in r) throw new Error(r.error);
+    expect(r.files.nota_epyme_firmada?.nombre).toBe("nota.docx");
+  });
+
+  it("sigue aceptando la nota escaneada en PDF", async () => {
+    const r = await readUploads(
+      conArchivo("nota_epyme_firmada", "nota.pdf", "application/pdf"),
+      { fileFields: ["nota_epyme_firmada"] }
+    );
+    if ("error" in r) throw new Error(r.error);
+    expect(r.files.nota_epyme_firmada?.tipo).toBe("application/pdf");
+  });
+
+  it("rechaza Word en cualquier otro documento", async () => {
+    const r = await readUploads(conArchivo("estatuto", "estatuto.docx", DOCX), {
+      fileFields: ["estatuto"],
+    });
+    expect(r).toHaveProperty("error");
+    expect("error" in r && r.error).toContain("PDF o imagen");
+  });
+
+  it("nombra los formatos válidos de la nota al rechazar otro tipo", async () => {
+    const r = await readUploads(
+      conArchivo("nota_epyme_firmada", "nota.zip", "application/zip"),
+      { fileFields: ["nota_epyme_firmada"] }
+    );
+    expect("error" in r && r.error).toContain("PDF, imagen o Word");
+  });
+});

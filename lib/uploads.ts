@@ -1,4 +1,4 @@
-import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from "./validations";
+import { MAX_FILE_SIZE, formatosPermitidos, tiposPermitidos } from "./validations";
 
 export type ParsedFile = {
   nombre: string;
@@ -51,8 +51,10 @@ export async function readUploads(
       if (raw.size > MAX_FILE_SIZE) {
         return { error: `El archivo "${raw.name}" supera el tamaño máximo de 5MB.` };
       }
-      if (!ALLOWED_FILE_TYPES.includes(raw.type)) {
-        return { error: `Formato no permitido en "${raw.name}" (PDF o imagen).` };
+      if (!tiposPermitidos(key).includes(raw.type)) {
+        return {
+          error: `Formato no permitido en "${raw.name}" (${formatosPermitidos(key)}).`,
+        };
       }
       const buffer = Buffer.from(await raw.arrayBuffer());
       files[key] = {

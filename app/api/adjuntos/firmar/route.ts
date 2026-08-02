@@ -2,29 +2,43 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
-import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE, firstZodError } from "@/lib/validations";
+import {
+  MAX_FILE_SIZE,
+  firstZodError,
+  formatosPermitidos,
+  tiposPermitidos,
+} from "@/lib/validations";
 import { construirClave, firmarSubida, storageHabilitado } from "@/lib/storage";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({
-  tramite: z.enum(["alta", "precalificacion"]),
-  // Identificador del envío: lo genera el navegador y lo repite en cada
-  // documento, para que todos caigan en la misma carpeta (el legajo).
-  tramiteId: z.string().uuid(),
-  campo: z.string().trim().min(1).max(60),
-  nombre: z.string().trim().min(1).max(200),
-  tipo: z.string().trim().refine((t) => ALLOWED_FILE_TYPES.includes(t), {
-    message: "Tipo de archivo no permitido (PDF o imagen)",
-  }),
-  tamano: z
-    .number()
-    .int()
-    .positive()
-    .max(MAX_FILE_SIZE, "El archivo supera el tamaño máximo permitido"),
-});
+const schema = z
+  .object({
+    tramite: z.enum(["alta", "precalificacion"]),
+    // Identificador del envío: lo genera el navegador y lo repite en cada
+    // documento, para que todos caigan en la misma carpeta (el legajo).
+    tramiteId: z.string().uuid(),
+    campo: z.string().trim().min(1).max(60),
+    nombre: z.string().trim().min(1).max(200),
+    tipo: z.string().trim().min(1),
+    tamano: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_FILE_SIZE, "El archivo supera el tamaño máximo permitido"),
+  })
+  // Los formatos aceptados dependen del campo: sólo la Nota EPYME admite Word.
+  .superRefine((v, ctx) => {
+    if (!tiposPermitidos(v.campo).includes(v.tipo)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tipo"],
+        message: `Tipo de archivo no permitido (${formatosPermitidos(v.campo)})`,
+      });
+    }
+  });
 
 export async function POST(req: NextRequest) {
   maybeCleanup();

@@ -18,6 +18,12 @@ import type { NotaEpymeInput } from "@/lib/nota-epyme";
 type TipoAlta = "fisica" | "juridica";
 
 const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
+// La Nota EPYME se descarga en Word: quien la firma digitalmente la devuelve en
+// ese formato. Se listan también las extensiones porque varios selectores de
+// archivo del celular no filtran bien por el tipo MIME de Office.
+const ACCEPT_NOTA =
+  `${ACCEPT},.doc,.docx,application/msword,` +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const SI_NO = [
   { value: "no", label: "No" },
   { value: "si", label: "Sí" },
@@ -543,7 +549,8 @@ function NotaEpymeBlock({
       </legend>
       <p className="text-sm text-vertix/70">
         Descargá la nota en Word, ya completa con los datos cargados arriba.
-        Imprimila, firmala y volvé a subirla acá.
+        Imprimila, firmala y volvé a subirla acá escaneada o fotografiada. Si la
+        firmás en la computadora, podés subir el mismo archivo de Word.
       </p>
       <div>
         <Button type="button" variant="secondary" onClick={onGenerar} loading={generando}>
@@ -554,7 +561,8 @@ function NotaEpymeBlock({
         name="nota_epyme_firmada"
         label="Nota de Adhesión EPYME firmada"
         required
-        accept={ACCEPT}
+        accept={ACCEPT_NOTA}
+        hint="PDF, foto o Word. Tiene que estar firmada."
         error={fe("nota_epyme_firmada")}
       />
     </fieldset>
