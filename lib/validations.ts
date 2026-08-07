@@ -28,7 +28,7 @@ export const instrumentoSoloDirecto = (i: InstrumentoCheque) => i === "cheque";
 export const instrumentoSoloComitente = (i: InstrumentoCheque) => i === "fce";
 
 export const MSG_CHEQUE_SOLO_DIRECTO =
-  'El cheque físico se opera únicamente en forma directa con Vertix: en el mercado de capitales sólo se negocian echeq y FCE. Elegí "Directo con Vertix" o cambiá el instrumento.';
+  'El cheque físico se opera únicamente en forma directa con Vertix: en el mercado de capitales sólo se negocian echeq y FCE. Elegí "Sin cuenta comitente en el mercado de capitales" o cambiá el instrumento.';
 
 export const MSG_FCE_SOLO_COMITENTE =
   "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente. Elegí esa modalidad o cambiá el instrumento.";
@@ -37,7 +37,7 @@ export function cumpleMinDiasHabiles(fechaISO: string, ahora: Date = hoy()): boo
   return diasHabilesEntre(ahora, parseISODate(fechaISO)) >= MIN_DIAS_HABILES;
 }
 
-export const MSG_MIN_DIAS_COMITENTE = `Con cuenta comitente no podemos tomar valores con vencimiento menor a ${MIN_DIAS_HABILES} días hábiles. Elegí "Directo con Vertix" o comunicate con nosotros para ver otra manera de negociación.`;
+export const MSG_MIN_DIAS_COMITENTE = `Con cuenta comitente no podemos tomar valores con vencimiento menor a ${MIN_DIAS_HABILES} días hábiles. Elegí "Sin cuenta comitente en el mercado de capitales" o comunicate con nosotros para ver otra manera de negociación.`;
 
 export const MSG_MIN_DIAS_INSTRUMENTO = `Los echeq y las FCE se negocian en el mercado de capitales, que exige un vencimiento mínimo de ${MIN_DIAS_HABILES} días hábiles. Si se trata de un cheque físico seleccioná "Cheque"; si no, comunicate con nosotros.`;
 
@@ -406,26 +406,17 @@ export const ALLOWED_FILE_TYPES = [
 ];
 
 /**
- * La Nota EPYME es el único documento que generamos nosotros, y se descarga en
- * Word: quien la firma digitalmente en vez de imprimirla la devuelve en ese
- * mismo formato. El resto de los documentos siempre llega escaneado o
- * fotografiado, así que no hay motivo para abrirles la puerta a Word.
+ * Todos los documentos llegan escaneados o fotografiados, incluida la Nota
+ * EPYME: AdCap exige que se imprima y se firme a mano (confirmado el
+ * 06/08/2026), así que Word no se acepta en ningún adjunto.
  */
-export const WORD_FILE_TYPES = [
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/msword",
-];
-export const CAMPOS_ACEPTAN_WORD = ["nota_epyme_firmada"];
-
-export function tiposPermitidos(campo?: string): string[] {
-  return CAMPOS_ACEPTAN_WORD.includes(campo ?? "")
-    ? [...ALLOWED_FILE_TYPES, ...WORD_FILE_TYPES]
-    : ALLOWED_FILE_TYPES;
+export function tiposPermitidos(): string[] {
+  return ALLOWED_FILE_TYPES;
 }
 
 /** Formatos aceptados en texto, para los mensajes de error. */
-export function formatosPermitidos(campo?: string): string {
-  return CAMPOS_ACEPTAN_WORD.includes(campo ?? "") ? "PDF, imagen o Word" : "PDF o imagen";
+export function formatosPermitidos(): string {
+  return "PDF o imagen";
 }
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB por archivo

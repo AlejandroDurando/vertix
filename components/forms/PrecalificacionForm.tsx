@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { FileInput, Input, Select } from "@/components/ui/Field";
+import { FileInput, Input, NumberInput, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
@@ -15,7 +15,13 @@ import {
 } from "@/lib/adjuntos-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { MIN_DIAS_HABILES, instrumentoRequiereMinDias } from "@/lib/validations";
-import { TELEFONO, TELEFONO_URL, WHATSAPP_URL } from "@/lib/contacto";
+import {
+  MSG_ABRIR_CUENTA,
+  TELEFONO,
+  TELEFONO_URL,
+  WHATSAPP_URL,
+  whatsappCon,
+} from "@/lib/contacto";
 import type { InstrumentoCheque } from "@/types";
 
 type Servicio = "cheques" | "prestamos";
@@ -126,7 +132,16 @@ export function PrecalificacionForm() {
           <Link href="/alta" className="font-semibold underline">
             formulario de alta
           </Link>{" "}
-          o contactanos: una vez abierta la cuenta vas a poder descontar tus valores.
+          o{" "}
+          <a
+            href={whatsappCon(MSG_ABRIR_CUENTA)}
+            className="font-semibold underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            contactanos
+          </a>
+          : una vez abierta la cuenta vas a poder descontar tus valores.
         </Alert>
       )}
 
@@ -160,7 +175,7 @@ export function PrecalificacionForm() {
                 placeholder="Seleccionar..."
                 value={instrumento}
                 onChange={(e) => setInstrumento(e.target.value as InstrumentoCheque)}
-                hint="El cheque físico se negocia directo con Vertix; el echeq y la FCE, en el mercado de capitales."
+                hint="El cheque físico se negocia sin cuenta comitente (directo con Vertix); el echeq y la FCE, en el mercado de capitales."
                 error={fe("instrumento")}
               />
               <Input
@@ -188,20 +203,20 @@ export function PrecalificacionForm() {
                 error={fe("fecha_pago")}
               />
               <Input name="banco_emisor" label="Banco emisor" required error={fe("banco_emisor")} />
-              <Input
+              <NumberInput
                 name="cuit_librador"
                 label="CUIT del librador del cheque"
                 required
-                inputMode="numeric"
-                placeholder="Sólo números"
+                maxDigits={11}
+                placeholder="11 números"
                 error={fe("cuit_librador")}
               />
-              <Input
+              <NumberInput
                 name="cuit_endosatario"
                 label="CUIT del endosatario"
                 required
-                inputMode="numeric"
-                placeholder="Sólo números"
+                maxDigits={11}
+                placeholder="11 números"
                 hint="A quién se le endosa (probablemente quien envía la solicitud). No puede coincidir con el librador."
                 error={fe("cuit_endosatario")}
               />
@@ -227,12 +242,12 @@ export function PrecalificacionForm() {
                 onChange={(e) => setTipoPrestamo(e.target.value as TipoPrestamo)}
                 error={fe("tipo_prestamo")}
               />
-              <Input
+              <NumberInput
                 name="cuit_solicitante"
                 label="CUIT de quien solicita el préstamo"
                 required
-                inputMode="numeric"
-                placeholder="Sólo números"
+                maxDigits={11}
+                placeholder="11 números"
                 error={fe("cuit_solicitante")}
               />
               <Input

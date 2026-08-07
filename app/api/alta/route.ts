@@ -20,6 +20,7 @@ const FILE_FIELDS = [
   "conyuge_dni_frente",
   "conyuge_dni_dorso",
   "constancia_regimen_simplificado",
+  "ddjj_actividad_licita",
   "nota_epyme_firmada",
   // Persona física — requisitos adicionales de Sailing
   "selfie_dni",
@@ -43,6 +44,7 @@ const LABELS: Record<string, string> = {
   conyuge_dni_dorso: "DNI del cónyuge (dorso)",
   constancia_regimen_simplificado:
     "Constancia de adhesión al Régimen Simplificado de Ganancias",
+  ddjj_actividad_licita: "DDJJ de actividad lícita firmada",
   nota_epyme_firmada: "Nota de Adhesión EPYME firmada",
   selfie_dni: "Selfie",
   foto_aleatoria: "Foto aleatoria (ej. palma derecha levantada)",
@@ -100,10 +102,11 @@ export async function POST(req: NextRequest) {
     if (data.estado_civil === "casado") {
       required.push("conyuge_dni_frente", "conyuge_dni_dorso");
     }
-    // Régimen Simplificado de DDJJ de Ganancias: si adhiere, la constancia de
-    // adhesión es obligatoria.
+    // Régimen Simplificado de DDJJ de Ganancias: si adhiere, van la constancia
+    // de adhesión y la DDJJ de actividad lícita firmada (pedido del cliente,
+    // 06/08/2026). Sólo en persona física: para PJ no fue solicitada.
     if (data.regimen_simplificado_ganancias === "si") {
-      required.push("constancia_regimen_simplificado");
+      required.push("constancia_regimen_simplificado", "ddjj_actividad_licita");
     }
     // Requisitos adicionales de Sailing para personas físicas.
     if (data.alyc === "sailing") {

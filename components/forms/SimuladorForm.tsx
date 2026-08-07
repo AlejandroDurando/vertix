@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
-import { Input, Select } from "@/components/ui/Field";
+import { Input, NumberInput, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
@@ -33,9 +33,11 @@ const INSTRUMENTO = [
   { value: "echeq", label: "Echeq" },
   { value: "fce", label: "FCE (Factura de Crédito Electrónica)" },
 ];
+// Redacción pedida por el cliente el 06/08/2026: la modalidad se nombra por la
+// cuenta comitente, no por "directo con Vertix".
 const MODALIDAD = [
-  { value: "directo", label: "Directo con Vertix" },
-  { value: "comitente", label: "Abriendo cuenta comitente (tasa más baja)" },
+  { value: "directo", label: "Sin cuenta comitente en el mercado de capitales (directo con Vertix)" },
+  { value: "comitente", label: "Con cuenta comitente en el mercado de capitales (tasa más baja)" },
 ];
 
 const ARS = new Intl.NumberFormat("es-AR", {
@@ -180,7 +182,7 @@ export function SimuladorForm() {
                 required
                 hint={
                   soloDirecto
-                    ? "El cheque físico se opera únicamente directo con Vertix: en el mercado sólo se negocian echeq y FCE."
+                    ? "El cheque físico se opera únicamente sin cuenta comitente (directo con Vertix): en el mercado de capitales sólo se negocian echeq y FCE."
                     : soloComitente
                       ? "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente."
                       : "Con cuenta comitente la tasa es más baja."
@@ -201,19 +203,19 @@ export function SimuladorForm() {
                 onChange={(e) => setFechaPago(e.target.value)}
                 error={fe("fecha_pago")}
               />
-              <Input
+              <NumberInput
                 name="cuit_librador"
                 label="CUIT del librador del cheque"
-                inputMode="numeric"
-                placeholder="Sólo números"
+                maxDigits={11}
+                placeholder="11 números"
                 required
                 error={fe("cuit_librador")}
               />
-              <Input
+              <NumberInput
                 name="cuit_endosatario"
                 label="CUIT del endosatario (a quién se endosa)"
-                inputMode="numeric"
-                placeholder="Sólo números"
+                maxDigits={11}
+                placeholder="11 números"
                 required
                 hint="No puede coincidir con el del librador."
                 error={fe("cuit_endosatario")}
@@ -237,7 +239,7 @@ export function SimuladorForm() {
           <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
             Con cuenta comitente no podemos tomar valores con vencimiento menor a 5
             días hábiles: lo exige el mercado de capitales. Probá con{" "}
-            <strong>Directo con Vertix</strong> o llamanos al{" "}
+            <strong>Sin cuenta comitente en el mercado de capitales</strong> o llamanos al{" "}
             <a href={TELEFONO_URL} className="font-semibold underline">{TELEFONO}</a>{" "}
             (<a href={WHATSAPP_URL} className="font-semibold underline" target="_blank" rel="noreferrer">WhatsApp</a>){" "}
             para ver otra manera de negociación.
@@ -315,7 +317,11 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
         <Row label="Descuento total" value={ARS.format(data.descuento_total)} />
         <Row
           label="Modalidad"
-          value={data.modalidad === "comitente" ? "Cuenta comitente" : "Directo con Vertix"}
+          value={
+            data.modalidad === "comitente"
+              ? "Con cuenta comitente en el mercado de capitales"
+              : "Sin cuenta comitente (directo con Vertix)"
+          }
         />
         <Row label="Días considerados" value={`${data.dias_considerados}`} />
         <Row
@@ -328,7 +334,8 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
         />
         <Row label="Tramo de plazo" value={data.tramo} />
         <Row label="Tasa de descuento (TNA)" value={`${data.tna_interes}%`} />
-        <Row label="Gastos" value={`${data.arancel}%`} />
+        {/* La FCE cotiza todo incluido: sin gastos no se muestra la línea. */}
+        {data.arancel > 0 && <Row label="Gastos" value={`${data.arancel}%`} />}
         <Row label="Tasa total aplicada (TNA)" value={`${data.tna_aplicada}%`} />
       </div>
       {data.bcra && (

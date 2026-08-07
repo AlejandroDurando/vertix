@@ -11,3 +11,10 @@ const TELEFONO_E164 = "5491150998356";
 
 export const WHATSAPP_URL = `https://wa.me/${TELEFONO_E164}`;
 export const TELEFONO_URL = `tel:+${TELEFONO_E164}`;
+
+/** Enlace a WhatsApp con el mensaje ya escrito, para no arrancar de cero. */
+export function whatsappCon(mensaje: string): string {
+  return `${WHATSAPP_URL}?text=${encodeURIComponent(mensaje)}`;
+}
+
+export const MSG_ABRIR_CUENTA = "Hola, quiero abrir mi cuenta comitente.";

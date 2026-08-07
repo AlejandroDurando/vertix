@@ -32,7 +32,8 @@ describe("parseTasasRows", () => {
       { hastaDias: 60, tasa: 43, gastos: 2.5 },
       { hastaDias: null, tasa: 45, gastos: 2.5 },
     ]);
-    expect(t.cheques.comitenteFce).toEqual({ hastaDias: null, tasa: 40, gastos: 2.5 });
+    // La FCE cotiza 40% todo incluido: sin fila de gastos, van en 0.
+    expect(t.cheques.comitenteFce).toEqual({ hastaDias: null, tasa: 40, gastos: 0 });
     expect(t.prestamos_ph).toBe(72);
     expect(t.prestamos_pj).toBe(82);
     expect(t.actualizado_el).toBe("2026-07-31");
@@ -99,6 +100,15 @@ describe("tramoParaOperacion", () => {
   it("comitente FCE: 40% sin importar el plazo", () => {
     expect(buscar("comitente", "fce", 10).tasa).toBe(40);
     expect(buscar("comitente", "fce", 200).tasa).toBe(40);
+  });
+
+  it("comitente FCE: sin gastos, ni siquiera el arancel de comitente", () => {
+    expect(buscar("comitente", "fce", 10).gastos).toBe(0);
+  });
+
+  it("comitente FCE: si la hoja carga gastos propios, se respetan", () => {
+    const conGastos = parseTasasRows([...FILAS, ["gastos_comitente_fce", "1,5"]]);
+    expect(conGastos.cheques.comitenteFce.gastos).toBe(1.5);
   });
 });
 

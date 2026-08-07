@@ -41,12 +41,14 @@ handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve 
 - **`/alta`** (AdCap/Sailing) → `multipart/form-data` porque lleva adjuntos. `lib/uploads.ts`
   separa campos de archivos (valida tipo/tamaño, decodifica a base64) de los demás; `parseAlta`
   determina campos obligatorios según `tipo` (física/jurídica) y condiciones (casado, adhesión al
-  Régimen Simplificado de Ganancias en PF). En PJ el campo `tiene_eecc` decide qué respaldo contable
+  Régimen Simplificado de Ganancias en PF — que pide la constancia de adhesión **y** la DDJJ de
+  actividad lícita firmada; sólo en PF, para PJ no fue solicitada). En PJ el campo `tiene_eecc` decide qué respaldo contable
   se exige: el balance certificado por el CPCE o las DDJJ de IVA de los últimos 6 meses.
   `lib/nota-epyme.ts` genera la Nota de Adhesión EPYME **en .docx** (vía `POST /api/nota-epyme`),
-  pre-llenada, que el usuario descarga, firma y vuelve a subir como uno de los adjuntos. Es el
-  **único adjunto que acepta Word** además de PDF/imagen (`tiposPermitidos()` en
-  `lib/validations.ts`), porque quien la firma en la computadora la devuelve en el mismo `.docx`. Persiste en
+  pre-llenada, que el usuario descarga, **imprime, firma a mano** y vuelve a subir escaneada o
+  fotografiada. AdCap no acepta la firma insertada en el Word (confirmado el 06/08/2026), así que
+  **ningún adjunto acepta Word**: `tiposPermitidos()` en `lib/validations.ts` es PDF/imagen para
+  todos. Persiste en
   `sheets-crm.ts` (pestañas `AltasPF`/`AltasPJ`) + `email.ts` (adjuntos van en el email, no se
   guardan — ver pendiente #1 abajo) en paralelo.
 
@@ -78,8 +80,12 @@ stub inactivo (ver tabla de integraciones).
   (`parseSimulador`, `parseAlta`) que discriminan por campo y devuelven `{success, message, field}`.
 - **Formularios**: client components con `FormData` + `postJson` / `postForm` de `lib/api-client.ts`.
   Patrón `fe(name)` para mapear el error del server al input. Campos condicionales con estado local.
-- **UI**: componentes genéricos en `components/ui/` (`Input`, `Select`, `FileInput`, `Textarea`,
-  `Button`, `Alert`, `Tabs`). No escribir inputs a mano.
+- **UI**: componentes genéricos en `components/ui/` (`Input`, `NumberInput`, `Select`, `FileInput`,
+  `Textarea`, `Button`, `Alert`, `Tabs`). No escribir inputs a mano. CUIT, DNI y CBU van **siempre**
+  con `NumberInput` (`maxDigits` 11 / 8 / 22): filtra todo lo que no sea dígito al tipear y al pegar,
+  así no entran guiones ni puntos.
+- **Contacto**: el teléfono y el WhatsApp de Martín salen de `lib/contacto.ts`, nunca hardcodeados.
+  `whatsappCon(mensaje)` arma el enlace con el texto ya escrito.
 - **Tasas**: siempre **TNA anual en porcentaje** (`48` = 48% anual), nunca fracciones ni tasas
   diarias/mensuales. Convención heredada del formato viejo (`0.15`) que ya no se acepta.
 - **Fechas**: usar `hoy()` de `lib/fechas.ts`, nunca `new Date()` para "el día de hoy" — el servidor
@@ -107,7 +113,10 @@ ignoran valores fuera del rango 5–300% (protege contra el formato viejo y erro
 **Tasa de cheques = tasa de descuento + gastos, por modalidad y por tramo de plazo** (confirmado el
 31/07/2026). Directo con Vertix: ≤45 días 48% + 2%, ≥46 días 72% + 3,5%. Comitente: ≤30 días 40%,
 31–60 43%, ≥61 45%, siempre + 2,5% de arancel. La FCE en comitente no tiene tramos (su tasa depende
-del pagador de la factura): 40% + 2,5% como estimación. Cada tramo son **dos filas en la hoja**
+del pagador de la factura) y **cotiza 40% todo incluido, sin arancel** (corregido el 06/08/2026):
+tiene su propia fila `gastos_comitente_fce`, la única **opcional** de la hoja — si falta se toman 0
+gastos en vez de invalidar la lectura entera, y con gastos en 0 el simulador no muestra esa línea.
+Cada tramo son **dos filas en la hoja**
 (tasa y gastos) para poder ajustar una sin la otra; `tramoParaOperacion()` en `lib/tasas.ts` elige
 cuál aplica. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
 la acreditación del comprador. El resultado desglosa tasa, gastos, total y el tramo aplicado.
@@ -143,12 +152,12 @@ rechaza en simulador y precalificación.
 
 | Integración | Estado |
 |---|---|
-| **Google Sheets — tasas** | Activo. `GOOGLE_SHEETS_ID`, pestaña `tasas`. La service account tiene **solo Lector** acá: no se puede escribir por API. |
+| **Google Sheets — tasas** | Activo. `GOOGLE_SHEETS_ID`, pestaña `tasas`. La service account **ya es Editor** acá (lo era sólo Lector hasta el 06/08/2026): se puede escribir por API pidiendo el scope `spreadsheets` en vez de `spreadsheets.readonly`. La app igual lee con el scope de sólo lectura. |
 | **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `AltasPF` última = régimen simplificado. ⚠️ Los encabezados de esas dos columnas todavía hay que escribirlos en la hoja. |
 | **Resend (email)** | Activo para la casilla interna. Los emails de confirmación al solicitante **no llegan a externos** hasta verificar el dominio `vertix.com.ar` en Resend (DNS). La API devuelve `confirmacion_enviada` para chequearlo. |
 | **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
 | **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |
-| **Almacenamiento de adjuntos (S3/R2)** | **Código listo, sin credenciales.** `lib/storage.ts` + `/api/adjuntos/firmar` (URL de subida) + `/api/adjuntos` (descarga con token). Se activa cuando estén `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `ADJUNTOS_SECRET` y `APP_URL`. Sin eso, `firmar` devuelve 503 y los forms mandan los archivos dentro del multipart, como antes. |
+| **Almacenamiento de adjuntos (S3/R2)** | **Activo** — bucket `vertix-legajos` en Cloudflare R2 (verificado el 06/08/2026: 6 legajos guardados). `lib/storage.ts` + `/api/adjuntos/firmar` (URL de subida) + `/api/adjuntos` (descarga con token). Necesita `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION=auto`, `ADJUNTOS_SECRET` y `APP_URL`. Si faltaran, `firmar` devuelve 503 y los forms vuelven a mandar los archivos dentro del multipart (con el techo de 4,5MB de Vercel). |
 | **HubSpot** | **Inactivo.** `lib/hubspot.ts` es un stub: la lógica real está comentada y espera `HUBSPOT_API_KEY`. Se llama desde contacto y precalificación pero devuelve `disabled`. |
 
 ⚠️ El CRM tiene filas de prueba que empiezan con **`EJEMPLO`** en las 4 pestañas (carga de
@@ -156,12 +165,10 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Decidido pero NO reflejado en el código
 
-- **DDJJ del Régimen Simplificado**: el formulario ya ofrece descargar
-  `public/documentos/ddjj-actividad-licita.docx`, pero **no se pide la firmada como adjunto**: falta
-  que el cliente confirme si la reciben por fuera y si también aplica a personas jurídicas.
-- **Tasa de cheques 48%**: el código y el fallback ya usan 48 + 2,5 de arancel, pero **la hoja
-  todavía dice 43 y no tiene la fila `arancel_cheques`** (no pude escribirla, ver permisos arriba).
-  Hasta que se corrija a mano, producción cotiza 45,5% en vez de 50,5%.
+- **DDJJ del Régimen Simplificado en PJ**: en persona física ya se pide la firmada como adjunto
+  (`ddjj_actividad_licita`, obligatoria si adhiere). Para personas jurídicas el cliente **no la
+  pidió**, así que no se exige; si algún día la piden, es agregar el campo en `JuridicaFields` y en
+  el `required` de `app/api/alta/route.ts`.
 - **Requisitos de Sailing**: implementados a partir de dos imágenes (selfie con DNI, foto aleatoria,
   servicio si el domicilio del DNI no es el actual, ingresos opcionales) y de la regla "Sailing solo
   personas físicas, las jurídicas van a AdCap". El cliente dijo que pasaría el detalle formal
@@ -170,9 +177,10 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Pendientes técnicos
 
-1. **Adjuntos sin almacenamiento durable** — código listo, **falta crear el bucket**. `lib/storage.ts`
-   sube a cualquier bucket S3-compatible (elegido R2); mientras las variables `S3_*` estén vacías el
-   sistema sigue como antes: los documentos viajan sólo por email y no queda copia recuperable.
+1. ~~**Adjuntos sin almacenamiento durable**~~ — **resuelto**: el bucket R2 `vertix-legajos` está
+   creado y funcionando (ver tabla de integraciones). Falta confirmar que las variables `S3_*` estén
+   cargadas también en **Vercel**, no sólo en `.env.local`: si en producción faltaran, los envíos
+   reales volverían a viajar por email sin dejar copia.
    ⚠️ **Google Drive no sirve como destino**: la service account tiene quota 0 y `files.create` falla
    con "Service Accounts do not have storage quota"; requeriría unidad compartida (sólo con Google
    Workspace — el MX de `vertix.com.ar` apunta a Hostmar, así que hoy no lo tienen) o delegación OAuth.
@@ -194,4 +202,4 @@ verificación). Borrarlas cuando ya no sirvan.
 ## Falta información / a confirmar
 
 - Sailing: ¿CBU y Nota EPYME obligatorios? ¿Co-titularidad?
-- ¿La DDJJ de actividad lícita firmada se pide como adjunto en el alta? ¿Aplica también a PJ?
+- ¿La DDJJ de actividad lícita también se pide a personas jurídicas? (en PF ya se pide como adjunto)

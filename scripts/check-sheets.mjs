@@ -146,9 +146,13 @@ console.log(c.dim("  hasta 45 dias      -> ") + c.yellow(`${v("directo_hasta_45"
 console.log(c.dim("  46 dias o mas      -> ") + c.yellow(`${v("directo_desde_46")}%`) + c.dim(` + ${v("gastos_directo_desde_46")}% gastos = ${total("directo_desde_46", "gastos_directo_desde_46")}`));
 console.log("");
 console.log(c.bold("Descuento de cheques - cuenta comitente:"));
-for (const [etiqueta, clave] of [["hasta 30 dias", "comitente_hasta_30"], ["de 31 a 60 dias", "comitente_31_60"], ["61 dias o mas", "comitente_desde_61"], ["FCE (estimado)", "comitente_fce"]]) {
+for (const [etiqueta, clave] of [["hasta 30 dias", "comitente_hasta_30"], ["de 31 a 60 dias", "comitente_31_60"], ["61 dias o mas", "comitente_desde_61"]]) {
   console.log(c.dim(`  ${etiqueta.padEnd(18)} -> `) + c.yellow(`${v(clave)}%`) + c.dim(` + ${v("arancel_comitente")}% arancel = ${total(clave, "arancel_comitente")}`));
 }
+// La FCE tiene su propia fila de gastos (hoy en 0: el 40% es total). Si la fila
+// no esta cargada, se asume 0, igual que en lib/tasas.ts.
+const gastosFce = map.get("gastos_comitente_fce") ?? 0;
+console.log(c.dim(`  ${"FCE (estimado)".padEnd(18)} -> `) + c.yellow(`${v("comitente_fce")}%`) + c.dim(` + ${gastosFce}% gastos = ${Number((v("comitente_fce") + gastosFce).toFixed(2))}% total`));
 console.log("");
 console.log(c.bold("Prestamos (rango):"));
 console.log(c.dim("  prestamos_ph       -> ") + c.yellow(`${v("prestamos_ph")}%`));

@@ -27,7 +27,8 @@ const FALLBACK_TASAS: Tasas = {
       { hastaDias: 60, tasa: 43, gastos: 2.5 },
       { hastaDias: null, tasa: 45, gastos: 2.5 },
     ],
-    comitenteFce: { hastaDias: null, tasa: 40, gastos: 2.5 },
+    // La FCE cotiza 40% todo incluido: no lleva arancel (confirmado el 06/08/2026).
+    comitenteFce: { hastaDias: null, tasa: 40, gastos: 0 },
   },
   prestamos_ph: 72,
   prestamos_pj: 82,
@@ -73,7 +74,14 @@ const CLAVES = {
     { hastaDias: 60 as number | null, tasa: "comitente_31_60", gastos: "arancel_comitente" },
     { hastaDias: null as number | null, tasa: "comitente_desde_61", gastos: "arancel_comitente" },
   ],
-  comitenteFce: { hastaDias: null as number | null, tasa: "comitente_fce", gastos: "arancel_comitente" },
+  // La FCE tiene su propia fila de gastos y hoy va en 0 (el 40% es total). Es
+  // opcional en la hoja: si no está, se toma 0 en vez de invalidar la lectura.
+  comitenteFce: {
+    hastaDias: null as number | null,
+    tasa: "comitente_fce",
+    gastos: "gastos_comitente_fce",
+    gastosPorDefecto: 0,
+  },
 };
 
 // Los gastos son mucho menores que una TNA, así que tienen su propio rango.
@@ -122,10 +130,18 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
     return v ?? 0;
   };
 
-  const tramo = (def: { hastaDias: number | null; tasa: string; gastos: string }): TramoTasa => ({
+  const tramo = (def: {
+    hastaDias: number | null;
+    tasa: string;
+    gastos: string;
+    gastosPorDefecto?: number;
+  }): TramoTasa => ({
     hastaDias: def.hastaDias,
     tasa: leer(def.tasa),
-    gastos: leer(def.gastos),
+    gastos:
+      def.gastosPorDefecto == null
+        ? leer(def.gastos)
+        : map.get(def.gastos) ?? def.gastosPorDefecto,
   });
 
   const cheques = {

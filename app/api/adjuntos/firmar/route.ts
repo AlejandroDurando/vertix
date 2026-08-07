@@ -29,13 +29,12 @@ const schema = z
       .positive()
       .max(MAX_FILE_SIZE, "El archivo supera el tamaño máximo permitido"),
   })
-  // Los formatos aceptados dependen del campo: sólo la Nota EPYME admite Word.
   .superRefine((v, ctx) => {
-    if (!tiposPermitidos(v.campo).includes(v.tipo)) {
+    if (!tiposPermitidos().includes(v.tipo)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["tipo"],
-        message: `Tipo de archivo no permitido (${formatosPermitidos(v.campo)})`,
+        message: `Tipo de archivo no permitido (${formatosPermitidos()})`,
       });
     }
   });

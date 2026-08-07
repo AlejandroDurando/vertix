@@ -61,18 +61,18 @@ describe("readUploads — formatos permitidos", () => {
     return fd;
   };
 
-  // La Nota EPYME se descarga en Word: si se firma en la computadora, vuelve
-  // en ese mismo formato y tiene que poder subirse.
-  it("acepta el Word firmado en la Nota EPYME", async () => {
+  // AdCap exige la nota impresa y firmada a mano, así que el Word tampoco se
+  // acepta acá: sólo el escaneo o la foto.
+  it("rechaza el Word en la Nota EPYME", async () => {
     const r = await readUploads(
       conArchivo("nota_epyme_firmada", "nota.docx", DOCX),
       { fileFields: ["nota_epyme_firmada"] }
     );
-    if ("error" in r) throw new Error(r.error);
-    expect(r.files.nota_epyme_firmada?.nombre).toBe("nota.docx");
+    expect(r).toHaveProperty("error");
+    expect("error" in r && r.error).toContain("PDF o imagen");
   });
 
-  it("sigue aceptando la nota escaneada en PDF", async () => {
+  it("acepta la nota escaneada en PDF", async () => {
     const r = await readUploads(
       conArchivo("nota_epyme_firmada", "nota.pdf", "application/pdf"),
       { fileFields: ["nota_epyme_firmada"] }
@@ -89,11 +89,11 @@ describe("readUploads — formatos permitidos", () => {
     expect("error" in r && r.error).toContain("PDF o imagen");
   });
 
-  it("nombra los formatos válidos de la nota al rechazar otro tipo", async () => {
+  it("nombra los formatos válidos al rechazar otro tipo", async () => {
     const r = await readUploads(
       conArchivo("nota_epyme_firmada", "nota.zip", "application/zip"),
       { fileFields: ["nota_epyme_firmada"] }
     );
-    expect("error" in r && r.error).toContain("PDF, imagen o Word");
+    expect("error" in r && r.error).toContain("PDF o imagen");
   });
 });

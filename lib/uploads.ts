@@ -51,9 +51,9 @@ export async function readUploads(
       if (raw.size > MAX_FILE_SIZE) {
         return { error: `El archivo "${raw.name}" supera el tamaño máximo de 5MB.` };
       }
-      if (!tiposPermitidos(key).includes(raw.type)) {
+      if (!tiposPermitidos().includes(raw.type)) {
         return {
-          error: `Formato no permitido en "${raw.name}" (${formatosPermitidos(key)}).`,
+          error: `Formato no permitido en "${raw.name}" (${formatosPermitidos()}).`,
         };
       }
       const buffer = Buffer.from(await raw.arrayBuffer());

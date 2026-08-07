@@ -53,6 +53,44 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   );
 });
 
+type NumberInputProps = Omit<InputProps, "type" | "inputMode"> & {
+  /** Cantidad máxima de dígitos: 11 para CUIT, 8 para DNI, 22 para CBU. */
+  maxDigits: number;
+};
+
+/**
+ * Input para CUIT, DNI y CBU: sólo dígitos, sin guiones ni puntos, con el tope
+ * de largo del documento. Filtra al tipear y al pegar (pedido del cliente,
+ * 06/08/2026) y conserva la posición del cursor para que no salte al final al
+ * corregir en el medio.
+ */
+export const NumberInput = forwardRef<HTMLInputElement, NumberInputProps>(function NumberInput(
+  { maxDigits, onInput, ...rest },
+  ref,
+) {
+  return (
+    <Input
+      ref={ref}
+      inputMode="numeric"
+      autoComplete="off"
+      maxLength={maxDigits}
+      onInput={(e) => {
+        const el = e.currentTarget;
+        const cursor = el.selectionStart ?? el.value.length;
+        const digitosAntes = el.value.slice(0, cursor).replace(/\D/g, "").length;
+        const limpio = el.value.replace(/\D/g, "").slice(0, maxDigits);
+        if (limpio !== el.value) {
+          el.value = limpio;
+          const pos = Math.min(digitosAntes, limpio.length);
+          el.setSelectionRange(pos, pos);
+        }
+        onInput?.(e);
+      }}
+      {...rest}
+    />
+  );
+});
+
 type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   label: string;
   hint?: string;

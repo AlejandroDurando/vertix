@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
-import { FileInput, Input, Select, Textarea } from "@/components/ui/Field";
+import { FileInput, Input, NumberInput, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Tabs } from "@/components/ui/Tabs";
@@ -18,12 +18,6 @@ import type { NotaEpymeInput } from "@/lib/nota-epyme";
 type TipoAlta = "fisica" | "juridica";
 
 const ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
-// La Nota EPYME se descarga en Word: quien la firma digitalmente la devuelve en
-// ese formato. Se listan también las extensiones porque varios selectores de
-// archivo del celular no filtran bien por el tipo MIME de Office.
-const ACCEPT_NOTA =
-  `${ACCEPT},.doc,.docx,application/msword,` +
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const SI_NO = [
   { value: "no", label: "No" },
   { value: "si", label: "Sí" },
@@ -289,8 +283,8 @@ function FisicaFields({
       <Section title="Datos del titular">
         <Input name="nombre" label="Nombre" required error={fe("nombre")} />
         <Input name="apellido" label="Apellido" required error={fe("apellido")} />
-        <Input name="cuit" label="CUIT / CUIL" required inputMode="numeric" placeholder="Sólo números" error={fe("cuit")} />
-        <Input name="dni" label="DNI" required inputMode="numeric" placeholder="Sólo números" error={fe("dni")} />
+        <NumberInput name="cuit" label="CUIT / CUIL" required maxDigits={11} placeholder="11 números" error={fe("cuit")} />
+        <NumberInput name="dni" label="DNI" required maxDigits={8} placeholder="7 u 8 números" error={fe("dni")} />
         <Input name="fecha_nacimiento" label="Fecha de nacimiento" required type="date" error={fe("fecha_nacimiento")} />
         <Select
           name="estado_civil"
@@ -314,11 +308,11 @@ function FisicaFields({
           placeholder="Seleccionar..."
           value={regimenSimplificado}
           onChange={(e) => setRegimenSimplificado(e.target.value)}
-          hint="Atención: no es el régimen general de Ganancias, es el SIMPLIFICADO. Si adherís, vas a tener que adjuntar la constancia de adhesión y luego completar una DDJJ."
+          hint="Atención: no es el régimen general de Ganancias, es el SIMPLIFICADO. Si adherís, vas a tener que adjuntar la constancia de adhesión y la DDJJ de actividad lícita firmada."
           error={fe("regimen_simplificado_ganancias")}
         />
         <Select name="es_pep" label="¿Persona Expuesta Políticamente?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_pep")} />
-        <Input name="cbu" label="CBU" required inputMode="numeric" placeholder="22 dígitos" error={fe("cbu")} />
+        <NumberInput name="cbu" label="CBU" required maxDigits={22} placeholder="22 números" error={fe("cbu")} />
       </Section>
 
       {regimenSimplificado === "si" && (
@@ -328,7 +322,7 @@ function FisicaFields({
           <a href={URL_DDJJ_ACTIVIDAD} download className="font-semibold underline">
             Descargá el formulario
           </a>
-          , completalo y firmalo. Te lo vamos a pedir junto con el resto de la
+          , completalo, firmalo y subilo más abajo, junto con el resto de la
           documentación.
         </Alert>
       )}
@@ -349,7 +343,7 @@ function FisicaFields({
       {casado && (
         <Section title="Datos del cónyuge">
           <Input name="conyuge_nombre" label="Nombre y apellido del cónyuge" required error={fe("conyuge_nombre")} />
-          <Input name="conyuge_dni" label="DNI del cónyuge" required inputMode="numeric" placeholder="Sólo números" error={fe("conyuge_dni")} />
+          <NumberInput name="conyuge_dni" label="DNI del cónyuge" required maxDigits={8} placeholder="7 u 8 números" error={fe("conyuge_dni")} />
         </Section>
       )}
 
@@ -366,13 +360,23 @@ function FisicaFields({
           error={fe("selfie_dni")}
         />
         {regimenSimplificado === "si" && (
-          <FileInput
-            name="constancia_regimen_simplificado"
-            label="Constancia de adhesión al Régimen Simplificado"
-            required
-            accept={ACCEPT}
-            error={fe("constancia_regimen_simplificado")}
-          />
+          <>
+            <FileInput
+              name="constancia_regimen_simplificado"
+              label="Constancia de adhesión al Régimen Simplificado"
+              required
+              accept={ACCEPT}
+              error={fe("constancia_regimen_simplificado")}
+            />
+            <FileInput
+              name="ddjj_actividad_licita"
+              label="DDJJ de actividad lícita firmada"
+              required
+              accept={ACCEPT}
+              hint="El formulario que descargás más arriba, completo y firmado."
+              error={fe("ddjj_actividad_licita")}
+            />
+          </>
         )}
         {casado && (
           <>
@@ -406,7 +410,7 @@ function JuridicaFields({
     <>
       <Section title="Datos de la empresa">
         <Input name="razon_social" label="Razón social" required error={fe("razon_social")} />
-        <Input name="cuit" label="CUIT" required inputMode="numeric" placeholder="Sólo números" error={fe("cuit")} />
+        <NumberInput name="cuit" label="CUIT" required maxDigits={11} placeholder="11 números" error={fe("cuit")} />
         <Select
           name="tipo_societario"
           label="Tipo societario"
@@ -431,7 +435,7 @@ function JuridicaFields({
           error={fe("tiene_eecc")}
         />
         <Select name="es_pep" label="¿Algún socio/autoridad es PEP?" required options={SI_NO} placeholder="Seleccionar..." defaultValue="" error={fe("es_pep")} />
-        <Input name="cbu" label="CBU de la empresa" required inputMode="numeric" placeholder="22 dígitos" error={fe("cbu")} />
+        <NumberInput name="cbu" label="CBU de la empresa" required maxDigits={22} placeholder="22 números" error={fe("cbu")} />
       </Section>
 
       <Section title="Domicilio legal">
@@ -459,8 +463,8 @@ function JuridicaFields({
           hint="Es el carácter que va a figurar en la Nota de Adhesión EPYME."
           error={fe("referente_cargo")}
         />
-        <Input name="referente_cuit" label="CUIT / CUIL del firmante" required inputMode="numeric" placeholder="Sólo números" error={fe("referente_cuit")} />
-        <Input name="referente_dni" label="DNI del firmante" required inputMode="numeric" placeholder="Sólo números" error={fe("referente_dni")} />
+        <NumberInput name="referente_cuit" label="CUIT / CUIL del firmante" required maxDigits={11} placeholder="11 números" error={fe("referente_cuit")} />
+        <NumberInput name="referente_dni" label="DNI del firmante" required maxDigits={8} placeholder="7 u 8 números" error={fe("referente_dni")} />
         <Select
           name="referente_estado_civil"
           label="Estado civil del firmante"
@@ -481,7 +485,7 @@ function JuridicaFields({
             name="datos_socios"
             label="Datos de socios y firmantes, con su participación en el capital"
             required
-            hint="De cada socio o firmante que no figure en el estatuto: nombre, profesión, estado civil, lugar de nacimiento y qué porcentaje del capital tiene."
+            hint="De todos los socios que figuran en el contrato constitutivo o estatuto: nombre, profesión, estado civil, lugar de nacimiento y qué porcentaje del capital tiene cada uno."
             error={fe("datos_socios")}
           />
         </div>
@@ -490,7 +494,7 @@ function JuridicaFields({
       {casado && (
         <Section title="Datos del cónyuge del firmante">
           <Input name="conyuge_nombre" label="Nombre y apellido del cónyuge" required error={fe("conyuge_nombre")} />
-          <Input name="conyuge_dni" label="DNI del cónyuge" required inputMode="numeric" placeholder="Sólo números" error={fe("conyuge_dni")} />
+          <NumberInput name="conyuge_dni" label="DNI del cónyuge" required maxDigits={8} placeholder="7 u 8 números" error={fe("conyuge_dni")} />
         </Section>
       )}
 
@@ -549,8 +553,8 @@ function NotaEpymeBlock({
       </legend>
       <p className="text-sm text-vertix/70">
         Descargá la nota en Word, ya completa con los datos cargados arriba.
-        Imprimila, firmala y volvé a subirla acá escaneada o fotografiada. Si la
-        firmás en la computadora, podés subir el mismo archivo de Word.
+        Imprimila, firmala a mano y volvé a subirla acá escaneada o fotografiada.
+        No se acepta la firma insertada en el Word.
       </p>
       <div>
         <Button type="button" variant="secondary" onClick={onGenerar} loading={generando}>
@@ -561,8 +565,8 @@ function NotaEpymeBlock({
         name="nota_epyme_firmada"
         label="Nota de Adhesión EPYME firmada"
         required
-        accept={ACCEPT_NOTA}
-        hint="PDF, foto o Word. Tiene que estar firmada."
+        accept={ACCEPT}
+        hint="PDF o foto de la nota impresa y firmada a mano."
         error={fe("nota_epyme_firmada")}
       />
     </fieldset>

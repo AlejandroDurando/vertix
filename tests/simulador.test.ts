@@ -19,7 +19,7 @@ const TASAS: Tasas = {
       { hastaDias: 60, tasa: 43, gastos: 2.5 },
       { hastaDias: null, tasa: 45, gastos: 2.5 },
     ],
-    comitenteFce: { hastaDias: null, tasa: 40, gastos: 2.5 },
+    comitenteFce: { hastaDias: null, tasa: 40, gastos: 0 },
   },
   prestamos_ph: 72,
   prestamos_pj: 82,
@@ -109,7 +109,9 @@ describe("simularCheques", () => {
       ahora
     );
     expect(r.tna_interes).toBe(40);
-    expect(r.arancel).toBe(2.5);
+    // El 40% de la FCE es total: no lleva arancel.
+    expect(r.arancel).toBe(0);
+    expect(r.tna_aplicada).toBe(40);
     expect(r.tramo).toBe("todos los plazos");
   });
 });

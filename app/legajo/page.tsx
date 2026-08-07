@@ -30,6 +30,7 @@ const ETIQUETAS: Record<string, string> = {
   conyuge_dni_frente: "DNI del cónyuge (frente)",
   conyuge_dni_dorso: "DNI del cónyuge (dorso)",
   constancia_regimen_simplificado: "Constancia del Régimen Simplificado",
+  ddjj_actividad_licita: "DDJJ de actividad lícita firmada",
   nota_epyme_firmada: "Nota de Adhesión EPYME firmada",
   foto_aleatoria: "Foto aleatoria",
   servicio_titular: "Servicio a nombre del titular",
