@@ -175,7 +175,7 @@ export function PrecalificacionForm() {
                 placeholder="Seleccionar..."
                 value={instrumento}
                 onChange={(e) => setInstrumento(e.target.value as InstrumentoCheque)}
-                hint="El cheque físico se negocia sin cuenta comitente (directo con Vertix); el echeq y la FCE, en el mercado de capitales."
+                hint="El cheque físico se negocia sin cuenta comitente; el echeq y la FCE, en el mercado de capitales."
                 error={fe("instrumento")}
               />
               <Input

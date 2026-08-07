@@ -28,7 +28,7 @@ export const instrumentoSoloDirecto = (i: InstrumentoCheque) => i === "cheque";
 export const instrumentoSoloComitente = (i: InstrumentoCheque) => i === "fce";
 
 export const MSG_CHEQUE_SOLO_DIRECTO =
-  'El cheque físico se opera únicamente en forma directa con Vertix: en el mercado de capitales sólo se negocian echeq y FCE. Elegí "Sin cuenta comitente en el mercado de capitales" o cambiá el instrumento.';
+  'El cheque físico se opera únicamente sin cuenta comitente: en el mercado de capitales sólo se negocian echeq y FCE. Elegí "Sin cuenta comitente en el mercado de capitales" o cambiá el instrumento.';
 
 export const MSG_FCE_SOLO_COMITENTE =
   "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente. Elegí esa modalidad o cambiá el instrumento.";

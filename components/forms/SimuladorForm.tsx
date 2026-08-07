@@ -36,8 +36,8 @@ const INSTRUMENTO = [
 // Redacción pedida por el cliente el 06/08/2026: la modalidad se nombra por la
 // cuenta comitente, no por "directo con Vertix".
 const MODALIDAD = [
-  { value: "directo", label: "Sin cuenta comitente en el mercado de capitales (directo con Vertix)" },
-  { value: "comitente", label: "Con cuenta comitente en el mercado de capitales (tasa más baja)" },
+  { value: "directo", label: "Sin cuenta comitente en el mercado de capitales" },
+  { value: "comitente", label: "Con cuenta comitente en el mercado de capitales" },
 ];
 
 const ARS = new Intl.NumberFormat("es-AR", {
@@ -182,7 +182,7 @@ export function SimuladorForm() {
                 required
                 hint={
                   soloDirecto
-                    ? "El cheque físico se opera únicamente sin cuenta comitente (directo con Vertix): en el mercado de capitales sólo se negocian echeq y FCE."
+                    ? "El cheque físico se opera únicamente sin cuenta comitente: en el mercado de capitales sólo se negocian echeq y FCE."
                     : soloComitente
                       ? "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente."
                       : "Con cuenta comitente la tasa es más baja."
@@ -320,7 +320,7 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
           value={
             data.modalidad === "comitente"
               ? "Con cuenta comitente en el mercado de capitales"
-              : "Sin cuenta comitente (directo con Vertix)"
+              : "Sin cuenta comitente en el mercado de capitales"
           }
         />
         <Row label="Días considerados" value={`${data.dias_considerados}`} />
