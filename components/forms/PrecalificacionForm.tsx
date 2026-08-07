@@ -14,7 +14,13 @@ import {
   subirAdjuntos,
 } from "@/lib/adjuntos-client";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
-import { MIN_DIAS_HABILES, instrumentoRequiereMinDias } from "@/lib/validations";
+import {
+  MIN_DIAS_HABILES,
+  MODALIDAD_OPCIONES,
+  instrumentoSoloComitente,
+  instrumentoSoloDirecto,
+  modalidadRequiereMinDias,
+} from "@/lib/validations";
 import {
   MSG_ABRIR_CUENTA,
   TELEFONO,
@@ -22,7 +28,7 @@ import {
   WHATSAPP_URL,
   whatsappCon,
 } from "@/lib/contacto";
-import type { InstrumentoCheque } from "@/types";
+import type { InstrumentoCheque, ModalidadCheque } from "@/types";
 
 type Servicio = "cheques" | "prestamos";
 type TipoPrestamo = "personal" | "prendario";
@@ -57,11 +63,22 @@ export function PrecalificacionForm() {
   const [fieldError, setFieldError] = useState<string | undefined>();
   const [fechaPago, setFechaPago] = useState("");
   const [instrumento, setInstrumento] = useState<InstrumentoCheque>("cheque");
+  const [modalidad, setModalidad] = useState<ModalidadCheque>("directo");
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Los 5 días hábiles los exige el mercado de capitales, donde se negocian
-  // echeq y FCE. El cheque físico se puede vender por fuera, sin ese piso.
-  const exigeMinDias = instrumentoRequiereMinDias(instrumento);
+  // El cheque físico no se negocia en el mercado (sólo sin comitente) y la FCE
+  // sólo se negocia ahí. El echeq admite las dos vías.
+  const soloDirecto = instrumentoSoloDirecto(instrumento);
+  const soloComitente = instrumentoSoloComitente(instrumento);
+  const modalidadEfectiva: ModalidadCheque = soloDirecto
+    ? "directo"
+    : soloComitente
+      ? "comitente"
+      : modalidad;
+
+  // Los 5 días hábiles los exige el mercado de capitales: rigen sólo con
+  // cuenta comitente, igual que en el simulador.
+  const exigeMinDias = modalidadRequiereMinDias(modalidadEfectiva);
   const minFechaPago = useMemo(
     () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
     []
@@ -178,6 +195,29 @@ export function PrecalificacionForm() {
                 hint="El cheque físico se negocia sin cuenta comitente; el echeq y la FCE, en el mercado de capitales."
                 error={fe("instrumento")}
               />
+              <Select
+                name="modalidad"
+                label="Modalidad"
+                required
+                options={
+                  soloDirecto
+                    ? [MODALIDAD_OPCIONES[0]]
+                    : soloComitente
+                      ? [MODALIDAD_OPCIONES[1]]
+                      : MODALIDAD_OPCIONES
+                }
+                placeholder="Seleccionar..."
+                value={modalidadEfectiva}
+                onChange={(e) => setModalidad(e.target.value as ModalidadCheque)}
+                hint={
+                  soloDirecto
+                    ? "El cheque físico se opera únicamente sin cuenta comitente: en el mercado de capitales sólo se negocian echeq y FCE."
+                    : soloComitente
+                      ? "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente."
+                      : "Con cuenta comitente la tasa es más baja."
+                }
+                error={fe("modalidad")}
+              />
               <Input
                 name="monto_cheque"
                 label="Monto del cheque (ARS)"
@@ -285,9 +325,9 @@ export function PrecalificacionForm() {
 
         {servicio === "cheques" && fechaMuyCercana && (
           <Alert tone="warning" title="Fecha de pago menor a 5 días hábiles">
-            Los echeq y las FCE se negocian en el mercado de capitales, que exige un
-            vencimiento mínimo de 5 días hábiles. Si es un cheque físico, elegí{" "}
-            <strong>Cheque</strong> como instrumento; si no, llamanos al{" "}
+            Con cuenta comitente no podemos tomar valores con vencimiento menor a 5
+            días hábiles: lo exige el mercado de capitales. Probá con{" "}
+            <strong>Sin cuenta comitente en el mercado de capitales</strong> o llamanos al{" "}
             <a href={TELEFONO_URL} className="font-semibold underline">{TELEFONO}</a>{" "}
             (<a href={WHATSAPP_URL} className="font-semibold underline" target="_blank" rel="noreferrer">WhatsApp</a>){" "}
             y vemos otra manera de negociación.

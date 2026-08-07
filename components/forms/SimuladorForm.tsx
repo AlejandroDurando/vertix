@@ -11,6 +11,7 @@ import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import { formatearCuit } from "@/lib/cuit";
 import {
   MIN_DIAS_HABILES,
+  MODALIDAD_OPCIONES,
   instrumentoSoloComitente,
   instrumentoSoloDirecto,
   modalidadRequiereMinDias,
@@ -33,13 +34,6 @@ const INSTRUMENTO = [
   { value: "echeq", label: "Echeq" },
   { value: "fce", label: "FCE (Factura de Crédito Electrónica)" },
 ];
-// Redacción pedida por el cliente el 06/08/2026: la modalidad se nombra por la
-// cuenta comitente, no por "directo con Vertix".
-const MODALIDAD = [
-  { value: "directo", label: "Sin cuenta comitente en el mercado de capitales" },
-  { value: "comitente", label: "Con cuenta comitente en el mercado de capitales" },
-];
-
 const ARS = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
@@ -174,7 +168,11 @@ export function SimuladorForm() {
                 name="modalidad"
                 label="Modalidad"
                 options={
-                  soloDirecto ? [MODALIDAD[0]] : soloComitente ? [MODALIDAD[1]] : MODALIDAD
+                  soloDirecto
+                    ? [MODALIDAD_OPCIONES[0]]
+                    : soloComitente
+                      ? [MODALIDAD_OPCIONES[1]]
+                      : MODALIDAD_OPCIONES
                 }
                 placeholder="Seleccionar..."
                 value={modalidadEfectiva}

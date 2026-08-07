@@ -6,9 +6,9 @@ import {
 } from "@/lib/validations";
 import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 
-// El piso de 5 días hábiles lo exige el mercado de capitales: rige para la
-// cuenta comitente (simulador) y para echeq/FCE (precalificación), pero no
-// para un cheque físico negociado directo con Vertix.
+// El piso de 5 días hábiles lo exige el mercado de capitales: rige sólo con
+// cuenta comitente. Simulador y precalificación piden la modalidad, así que
+// los dos aplican la misma regla.
 const manana = toISODate(sumarDiasHabiles(hoy(), 1));
 const lejos = toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES + 5));
 
@@ -35,6 +35,7 @@ const precalificacion = (over: Record<string, unknown>) =>
     telefono: "1122334455",
     empresa: "Titular",
     instrumento: "cheque",
+    modalidad: "directo",
     monto_cheque: 100000,
     fecha_pago: lejos,
     banco_emisor: "Galicia",
@@ -109,22 +110,51 @@ describe("simulador de cheques — instrumento y modalidad", () => {
   });
 });
 
-describe("precalificación de cheques — mínimo de días hábiles por instrumento", () => {
-  it("bloquea echeq con vencimiento menor a 5 días hábiles", () => {
-    const res = precalificacion({ instrumento: "echeq", fecha_pago: manana });
+// Desde que la precalificación pide la modalidad (06/08/2026) aplica las
+// mismas reglas que el simulador.
+describe("precalificación de cheques — modalidad", () => {
+  it("bloquea con cuenta comitente si faltan menos de 5 días hábiles", () => {
+    const res = precalificacion({
+      instrumento: "echeq",
+      modalidad: "comitente",
+      fecha_pago: manana,
+    });
     expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["fecha_pago"]);
+    }
   });
 
-  it("bloquea FCE con vencimiento menor a 5 días hábiles", () => {
-    expect(precalificacion({ instrumento: "fce", fecha_pago: manana }).success).toBe(false);
+  it("permite sin cuenta comitente aunque falten menos de 5 días hábiles", () => {
+    expect(
+      precalificacion({ instrumento: "echeq", modalidad: "directo", fecha_pago: manana })
+        .success
+    ).toBe(true);
+    expect(
+      precalificacion({ instrumento: "cheque", modalidad: "directo", fecha_pago: manana })
+        .success
+    ).toBe(true);
   });
 
-  it("permite cheque físico con vencimiento menor a 5 días hábiles", () => {
-    expect(precalificacion({ instrumento: "cheque", fecha_pago: manana }).success).toBe(true);
+  it("rechaza el cheque físico con cuenta comitente", () => {
+    const res = precalificacion({ instrumento: "cheque", modalidad: "comitente" });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["modalidad"]);
+    }
   });
 
-  it("exige el instrumento", () => {
+  it("rechaza la FCE sin cuenta comitente", () => {
+    const res = precalificacion({ instrumento: "fce", modalidad: "directo" });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["modalidad"]);
+    }
+  });
+
+  it("exige el instrumento y la modalidad", () => {
     expect(precalificacion({ instrumento: undefined }).success).toBe(false);
+    expect(precalificacion({ modalidad: undefined }).success).toBe(false);
   });
 });
 

@@ -11,12 +11,16 @@ export const MIN_DIAS_HABILES = 5;
  * aplica a lo que se negocia ahí. Por fuera (directo con Vertix) se pueden
  * tomar valores con menor plazo de vencimiento.
  *
- * - Simulador: se decide por modalidad (comitente = mercado).
- * - Precalificación: no pide modalidad, se decide por instrumento (echeq y FCE
- *   sólo se negocian en el mercado; el cheque físico se puede vender por fuera).
+ * Simulador y precalificación piden la modalidad, así que ambos deciden por
+ * ella: el piso rige sólo con cuenta comitente.
  */
 export const modalidadRequiereMinDias = (m: ModalidadCheque) => m === "comitente";
-export const instrumentoRequiereMinDias = (i: InstrumentoCheque) => i !== "cheque";
+
+/** Etiquetas de la modalidad, compartidas por el simulador y la precalificación. */
+export const MODALIDAD_OPCIONES = [
+  { value: "directo", label: "Sin cuenta comitente en el mercado de capitales" },
+  { value: "comitente", label: "Con cuenta comitente en el mercado de capitales" },
+];
 
 /**
  * En el mercado de capitales sólo se negocian echeq y FCE: el cheque físico se
@@ -38,8 +42,6 @@ export function cumpleMinDiasHabiles(fechaISO: string, ahora: Date = hoy()): boo
 }
 
 export const MSG_MIN_DIAS_COMITENTE = `Con cuenta comitente no podemos tomar valores con vencimiento menor a ${MIN_DIAS_HABILES} días hábiles. Elegí "Sin cuenta comitente en el mercado de capitales" o comunicate con nosotros para ver otra manera de negociación.`;
-
-export const MSG_MIN_DIAS_INSTRUMENTO = `Los echeq y las FCE se negocian en el mercado de capitales, que exige un vencimiento mínimo de ${MIN_DIAS_HABILES} días hábiles. Si se trata de un cheque físico seleccioná "Cheque"; si no, comunicate con nosotros.`;
 
 const trimmed = (max: number, min = 1) =>
   z.string().trim().min(min).max(max);
@@ -96,6 +98,7 @@ export const precalificacionChequesSchema = z.object({
   telefono: telefonoSchema,
   empresa: trimmed(160), // PF: "Titular" o su nombre
   instrumento: z.enum(["cheque", "echeq", "fce"]),
+  modalidad: z.enum(["directo", "comitente"]),
   monto_cheque: montoSchema,
   fecha_pago: fechaSchema,
   banco_emisor: trimmed(120),
@@ -137,14 +140,34 @@ export const precalificacionSchema = z
       });
     }
 
+    // Mismas reglas que el simulador: el instrumento limita la modalidad, y el
+    // mínimo de días lo exige el mercado de capitales (sólo comitente).
+    if (instrumentoSoloDirecto(data.instrumento) && data.modalidad === "comitente") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modalidad"],
+        message: MSG_CHEQUE_SOLO_DIRECTO,
+      });
+      return;
+    }
+
+    if (instrumentoSoloComitente(data.instrumento) && data.modalidad === "directo") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modalidad"],
+        message: MSG_FCE_SOLO_COMITENTE,
+      });
+      return;
+    }
+
     if (
-      instrumentoRequiereMinDias(data.instrumento) &&
+      modalidadRequiereMinDias(data.modalidad) &&
       !cumpleMinDiasHabiles(data.fecha_pago)
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["fecha_pago"],
-        message: MSG_MIN_DIAS_INSTRUMENTO,
+        message: MSG_MIN_DIAS_COMITENTE,
       });
     }
   });

@@ -126,6 +126,11 @@ la acreditación del comprador. El resultado desglosa tasa, gastos, total y el t
 entre `prestamos_ph` y `prestamos_pj` como extremos (el código los ordena solo). Por eso el
 simulador ya **no** pide tipo de persona; la precalificación sí lo pide, como dato del lead.
 
+**Los textos de cara al usuario nombran la modalidad por la cuenta comitente**, sin aclaraciones
+entre paréntesis: "Sin cuenta comitente en el mercado de capitales" / "Con cuenta comitente en el
+mercado de capitales" (pedido del cliente, 06/08/2026). "Directo con Vertix" queda sólo en
+comentarios del código y en los nombres internos (`modalidad: "directo"`).
+
 **Sólo el librador bloquea el presupuesto por BCRA, con fail-open.** Se consulta la Central de
 Deudores (API pública sin credenciales) para librador y endosatario, pero **únicamente la situación
 ≥3 del librador impide emitir el presupuesto**: es quien termina pagando el cheque. La del
@@ -134,11 +139,13 @@ true })`) y nunca traba la cotización. Situación 2 o cheques rechazados advier
 responde se permite continuar (no frenar a un cliente legítimo por una caída del servicio).
 
 **El mínimo de 5 días hábiles de vencimiento sólo rige en el mercado de capitales.** Por fuera se
-pueden comprar valores con menor plazo, así que la regla es condicional: en el **simulador** depende
-de la modalidad (bloquea sólo `comitente`), y en la **precalificación**, que no pide modalidad,
-depende del instrumento (bloquea `echeq` y `fce`, permite el cheque físico). Los predicados viven en
-`lib/validations.ts` (`modalidadRequiereMinDias` / `instrumentoRequiereMinDias`) y los reusan los
-forms para el `min` del input date, así front y back nunca se desincronizan.
+pueden comprar valores con menor plazo, así que la regla depende de la modalidad: bloquea sólo
+`comitente`. **Simulador y precalificación piden la modalidad** (la precalificación desde el
+06/08/2026) y comparten las mismas reglas: `modalidadRequiereMinDias` para el piso de días, e
+`instrumentoSoloDirecto` / `instrumentoSoloComitente` para las combinaciones imposibles (el cheque
+físico no entra al mercado, la FCE sólo se negocia ahí). Viven en `lib/validations.ts` y los reusan
+los forms para el `min` del input date y para achicar el select, así front y back nunca se
+desincronizan. Las etiquetas salen de `MODALIDAD_OPCIONES`, también compartidas.
 
 **El descuento corre hasta la fecha estimada de acreditación** (+2 días hábiles si la fecha de pago
 es hábil, +3 si cae finde/feriado), no hasta la fecha de pago, porque es cuando el vendedor cobra
@@ -153,7 +160,7 @@ rechaza en simulador y precalificación.
 | Integración | Estado |
 |---|---|
 | **Google Sheets — tasas** | Activo. `GOOGLE_SHEETS_ID`, pestaña `tasas`. La service account **ya es Editor** acá (lo era sólo Lector hasta el 06/08/2026): se puede escribir por API pidiendo el scope `spreadsheets` en vez de `spreadsheets.readonly`. La app igual lee con el scope de sólo lectura. |
-| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `AltasPF` última = régimen simplificado. ⚠️ Los encabezados de esas dos columnas todavía hay que escribirlos en la hoja. |
+| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `Precalificacion!R` = modalidad (encabezados ya escritos en la hoja), `AltasPF` última = régimen simplificado (⚠️ ese encabezado todavía falta). |
 | **Resend (email)** | Activo para la casilla interna. Los emails de confirmación al solicitante **no llegan a externos** hasta verificar el dominio `vertix.com.ar` en Resend (DNS). La API devuelve `confirmacion_enviada` para chequearlo. |
 | **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
 | **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |
