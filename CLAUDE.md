@@ -118,7 +118,8 @@ tiene su propia fila `gastos_comitente_fce`, la única **opcional** de la hoja �
 gastos en vez de invalidar la lectura entera, y con gastos en 0 el simulador no muestra esa línea.
 Cada tramo son **dos filas en la hoja**
 (tasa y gastos) para poder ajustar una sin la otra; `tramoParaOperacion()` en `lib/tasas.ts` elige
-cuál aplica. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
+cuál aplica. Los costos del vendedor (`iva` 21, `derechos_mercado` 0,06, `impuesto_cheque` 1,2) son
+tres filas más, también **opcionales**: si faltan se usan esos mismos valores por defecto. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
 la acreditación del comprador. El resultado desglosa tasa, gastos, total y el tramo aplicado.
 
 **Préstamos cotizan un rango, no un valor.** La tasa depende del solicitante y del mercado
@@ -149,8 +150,26 @@ desincronizan. Las etiquetas salen de `MODALIDAD_OPCIONES`, también compartidas
 
 **El descuento corre hasta la fecha estimada de acreditación** (+2 días hábiles si la fecha de pago
 es hábil, +3 si cae finde/feriado), no hasta la fecha de pago, porque es cuando el vendedor cobra
-de verdad. ⚠️ Da un descuento levemente mayor — **pendiente de confirmación del cliente**; revertir
-son dos líneas en `lib/simulador.ts`.
+de verdad. **Confirmado el 07/08/2026** contra la planilla de cotización real: sus tres filas
+cargadas usan exactamente esas fechas de cobro.
+
+**El interés es un descuento racional, no simple** (alineado con la planilla el 07/08/2026):
+`V − V/(1 + i·d/365)`, no `V·i·d/365`. El arancel de Vertix, en cambio, **sí** se calcula sobre el
+nominal y prorrateado por días, y ya no se suma a la tasa: es una línea aparte del desglose. El
+`tna_aplicada` (tasa + gastos) se sigue informando como referencia, pero no es lo que se cobra.
+
+**El simulador desglosa todo lo que se le cobra al vendedor**, en pesos, replicando la planilla
+`compra CPD PESOS`. Con cuenta comitente: interés, arancel, IVA del arancel, derechos de mercado
+(prorrateados sobre 90 días, sobre el valor presente), IVA de los derechos y percepción de IVA
+(21% del interés). Fuera del mercado no se cobra nada de eso, pero sí el **impuesto al cheque**
+(1,2% del nominal) cuando la fecha de pago está a menos de 10 días hábiles: con tan pocos días el
+interés no llega a cubrirlo. Más allá de ese plazo queda absorbido por la tasa.
+
+**La percepción de IVA se cotiza siempre en el simulador público.** Depende de la condición del
+**comprador**, que lo consigue Vertix y no se conoce al simular, así que se muestra el peor caso
+(Responsable Inscripto) y se saca en la cotización real si es monotributista o consumidor final.
+Con `?interno=1` el simulador muestra un selector para elegir esa condición — es sólo un parámetro
+en la URL, sin login: no expone nada que no se pueda deducir cotizando.
 
 **No se descuentan cheques propios**: si el CUIT del librador y el del endosatario coinciden, se
 rechaza en simulador y precalificación.

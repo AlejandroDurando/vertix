@@ -70,6 +70,26 @@ describe("parseTasasRows", () => {
   it("falla con hoja vacía", () => {
     expect(() => parseTasasRows([])).toThrow(/vacía/);
   });
+
+  // Los costos que se le cobran al vendedor son filas opcionales: si faltan se
+  // usan los valores de la planilla de cotización en vez de romper la lectura.
+  it("toma los costos por defecto si la hoja no los trae", () => {
+    expect(parseTasasRows(FILAS).costos).toEqual({
+      iva: 21,
+      derechos_mercado: 0.06,
+      impuesto_cheque: 1.2,
+    });
+  });
+
+  it("lee los costos de la hoja cuando están cargados", () => {
+    const t = parseTasasRows([
+      ...FILAS,
+      ["iva", "10,5"],
+      ["derechos_mercado", "0,08"],
+      ["impuesto_cheque", "0,6"],
+    ]);
+    expect(t.costos).toEqual({ iva: 10.5, derechos_mercado: 0.08, impuesto_cheque: 0.6 });
+  });
 });
 
 describe("tramoParaOperacion", () => {

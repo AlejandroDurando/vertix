@@ -184,6 +184,9 @@ export const simuladorChequesSchema = z
     instrumento: z.enum(["cheque", "echeq", "fce"]),
     cuit_librador: cuitSchema,
     cuit_endosatario: cuitSchema,
+    // Sólo llega desde el simulador interno; desde la web se cotiza el peor
+    // caso ("ri", el default) porque el comprador todavía no está definido.
+    condicion_comprador: z.enum(["ri", "mono_cf"]).optional(),
   })
   .superRefine((data, ctx) => {
     if (normalizarCuit(data.cuit_librador) === normalizarCuit(data.cuit_endosatario)) {

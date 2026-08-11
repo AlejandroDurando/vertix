@@ -154,6 +154,22 @@ for (const [etiqueta, clave] of [["hasta 30 dias", "comitente_hasta_30"], ["de 3
 const gastosFce = map.get("gastos_comitente_fce") ?? 0;
 console.log(c.dim(`  ${"FCE (estimado)".padEnd(18)} -> `) + c.yellow(`${v("comitente_fce")}%`) + c.dim(` + ${gastosFce}% gastos = ${Number((v("comitente_fce") + gastosFce).toFixed(2))}% total`));
 console.log("");
+// Costos que se le cobran al vendedor ademas de la tasa. Filas opcionales: si
+// faltan, lib/tasas.ts usa estos mismos valores por defecto.
+console.log(c.bold("Costos del vendedor (filas opcionales):"));
+for (const [etiqueta, clave, def] of [
+  ["IVA", "iva", 21],
+  ["derechos de mercado", "derechos_mercado", 0.06],
+  ["impuesto al cheque", "impuesto_cheque", 1.2],
+]) {
+  const valor = map.get(clave);
+  console.log(
+    c.dim(`  ${etiqueta.padEnd(18)} -> `) +
+      c.yellow(`${valor ?? def}%`) +
+      c.dim(valor == null ? " (por defecto, falta la fila)" : "")
+  );
+}
+console.log("");
 console.log(c.bold("Prestamos (rango):"));
 console.log(c.dim("  prestamos_ph       -> ") + c.yellow(`${v("prestamos_ph")}%`));
 console.log(c.dim("  prestamos_pj       -> ") + c.yellow(`${v("prestamos_pj")}%`));

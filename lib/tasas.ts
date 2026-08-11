@@ -1,6 +1,12 @@
 import { google } from "googleapis";
 import { logger } from "./logger";
-import type { InstrumentoCheque, ModalidadCheque, Tasas, TramoTasa } from "@/types";
+import type {
+  CostosOperacion,
+  InstrumentoCheque,
+  ModalidadCheque,
+  Tasas,
+  TramoTasa,
+} from "@/types";
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hora
 const SHEET_RANGE = "tasas!A1:C100";
@@ -12,6 +18,17 @@ type CacheEntry = {
 
 let cache: CacheEntry | null = null;
 let inflight: Promise<Tasas> | null = null;
+
+/**
+ * Costos que se le cobran al vendedor además de la tasa, según la planilla de
+ * cotización real. Son filas **opcionales** de la hoja: si faltan se usan estos
+ * valores en vez de invalidar la lectura entera.
+ */
+const COSTOS_POR_DEFECTO: CostosOperacion = {
+  iva: 21,
+  derechos_mercado: 0.06,
+  impuesto_cheque: 1.2,
+};
 
 // Valores expresados como TNA (Tasa Nominal Anual) en %. La hoja "tasas" de
 // Google Sheets contiene una fila por tramo (ver CLAVES abajo). Esto es sólo el
@@ -30,6 +47,7 @@ const FALLBACK_TASAS: Tasas = {
     // La FCE cotiza 40% todo incluido: no lleva arancel (confirmado el 06/08/2026).
     comitenteFce: { hastaDias: null, tasa: 40, gastos: 0 },
   },
+  costos: COSTOS_POR_DEFECTO,
   prestamos_ph: 72,
   prestamos_pj: 82,
   actualizado_el: "fallback",
@@ -84,10 +102,21 @@ const CLAVES = {
   },
 };
 
+// Filas opcionales con los costos que se le cobran al vendedor además de la
+// tasa. Si faltan se toman los valores por defecto.
+const CLAVES_COSTOS: Record<keyof CostosOperacion, string> = {
+  iva: "iva",
+  derechos_mercado: "derechos_mercado",
+  impuesto_cheque: "impuesto_cheque",
+};
+
 // Los gastos son mucho menores que una TNA, así que tienen su propio rango.
 const GASTOS_MIN = 0;
 const GASTOS_MAX = 50;
-const esGastos = (clave: string) => clave.startsWith("gastos_") || clave.startsWith("arancel_");
+const esGastos = (clave: string) =>
+  clave.startsWith("gastos_") ||
+  clave.startsWith("arancel_") ||
+  Object.values(CLAVES_COSTOS).includes(clave);
 
 /** Parsea las filas de la hoja "tasas". Exportada para poder testearla. */
 export function parseTasasRows(rows: unknown[][]): Tasas {
@@ -149,6 +178,13 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
     comitente: CLAVES.comitente.map(tramo),
     comitenteFce: tramo(CLAVES.comitenteFce),
   };
+  const costos = {
+    iva: map.get(CLAVES_COSTOS.iva) ?? COSTOS_POR_DEFECTO.iva,
+    derechos_mercado:
+      map.get(CLAVES_COSTOS.derechos_mercado) ?? COSTOS_POR_DEFECTO.derechos_mercado,
+    impuesto_cheque:
+      map.get(CLAVES_COSTOS.impuesto_cheque) ?? COSTOS_POR_DEFECTO.impuesto_cheque,
+  };
   const prestamos_ph = leer("prestamos_ph");
   const prestamos_pj = leer("prestamos_pj");
 
@@ -160,6 +196,7 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
 
   return {
     cheques,
+    costos,
     prestamos_ph,
     prestamos_pj,
     actualizado_el: actualizado_el || new Date().toISOString().slice(0, 10),

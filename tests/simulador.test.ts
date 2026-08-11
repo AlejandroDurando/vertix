@@ -21,6 +21,7 @@ const TASAS: Tasas = {
     ],
     comitenteFce: { hastaDias: null, tasa: 40, gastos: 0 },
   },
+  costos: { iva: 21, derechos_mercado: 0.06, impuesto_cheque: 1.2 },
   prestamos_ph: 72,
   prestamos_pj: 82,
   actualizado_el: "test",
@@ -54,6 +55,10 @@ describe("simularCheques", () => {
   };
   const ahora = d("2026-01-05"); // lunes
 
+  /** Importe de un concepto del desglose, 0 si no aparece. */
+  const costo = (r: { costos: { concepto: string; monto: number }[] }, concepto: string) =>
+    r.costos.find((c) => c.concepto === concepto)?.monto ?? 0;
+
   it("descuenta hasta la fecha estimada de acreditación", () => {
     const r = simularCheques(input, TASAS, ahora);
     // Acreditación: 2026-01-14 → 9 días calendario desde el 05.
@@ -61,18 +66,81 @@ describe("simularCheques", () => {
     // El vendedor cobra el día de la operación, no cuando se acredita el comprador.
     expect(r.fecha_acreditacion_vendedor).toBe("2026-01-05");
     expect(r.dias_considerados).toBe(9);
-    // 1.000.000 * (48% + 2%) * 9/365
-    expect(r.descuento_total).toBeCloseTo(12328.77, 2);
-    expect(r.monto_a_recibir).toBeCloseTo(987671.23, 2);
     expect(r.tna_aplicada).toBe(50);
   });
 
-  it("la tasa total desglosa interés + gastos", () => {
+  // Descuento racional, como la planilla de cotización: se despeja el valor
+  // presente en vez de aplicar la tasa sobre el nominal.
+  it("el interés es el descuento racional sobre el nominal", () => {
     const r = simularCheques(input, TASAS, ahora);
+    const esperado = 1_000_000 - 1_000_000 / (1 + 0.48 * (9 / 365));
+    expect(costo(r, "Interés")).toBeCloseTo(esperado, 2);
+    // El descuento simple viejo daba 11.835,62: siempre cobra de más.
+    expect(costo(r, "Interés")).toBeLessThan(1_000_000 * 0.48 * (9 / 365));
+  });
+
+  it("el arancel se calcula sobre el nominal y prorrateado por días", () => {
+    const r = simularCheques(input, TASAS, ahora);
+    expect(costo(r, "Arancel Vertix")).toBeCloseTo(1_000_000 * 0.02 * (9 / 365), 2);
     expect(r.tna_interes).toBe(48);
     expect(r.arancel).toBe(2);
-    expect(r.tna_aplicada).toBeCloseTo(r.tna_interes + r.arancel, 10);
     expect(r.tramo).toBe("hasta 45 días");
+  });
+
+  it("suma el impuesto al cheque si vence en menos de 10 días hábiles", () => {
+    const r = simularCheques(input, TASAS, ahora);
+    expect(costo(r, "Impuesto al cheque")).toBe(12_000);
+    expect(r.descuento_total).toBeCloseTo(24_190.32, 2);
+    expect(r.monto_a_recibir).toBeCloseTo(975_809.68, 2);
+  });
+
+  it("no cobra el impuesto al cheque cuando el plazo lo absorbe", () => {
+    const r = simularCheques({ ...input, fecha_pago: "2026-02-10" }, TASAS, ahora);
+    expect(costo(r, "Impuesto al cheque")).toBe(0);
+  });
+
+  // Fuera del mercado de capitales no hay derechos, IVA ni percepción.
+  it("directo no cobra IVA, derechos ni percepción", () => {
+    const r = simularCheques(input, TASAS, ahora);
+    expect(costo(r, "IVA sobre el arancel")).toBe(0);
+    expect(costo(r, "Derechos de mercado")).toBe(0);
+    expect(costo(r, "Percepción de IVA")).toBe(0);
+    expect(r.incluye_percepcion).toBe(false);
+  });
+
+  it("comitente desglosa arancel, IVA, derechos y percepción", () => {
+    const r = simularCheques(
+      { ...input, modalidad: "comitente", instrumento: "echeq" },
+      TASAS,
+      ahora
+    );
+    const interes = costo(r, "Interés");
+    const arancel = costo(r, "Arancel Vertix");
+    const derechos = costo(r, "Derechos de mercado");
+
+    expect(costo(r, "IVA sobre el arancel")).toBeCloseTo(arancel * 0.21, 2);
+    expect(costo(r, "IVA sobre los derechos")).toBeCloseTo(derechos * 0.21, 2);
+    // Los derechos se prorratean sobre 90 días y se calculan sobre el bruto.
+    expect(derechos).toBeCloseTo((1_000_000 - interes) * 0.0006 * (9 / 90), 2);
+    expect(costo(r, "Percepción de IVA")).toBeCloseTo(interes * 0.21, 2);
+    expect(r.incluye_percepcion).toBe(true);
+    expect(r.descuento_total).toBeCloseTo(12_635.47, 2);
+  });
+
+  it("el comprador monotributista o consumidor final no paga la percepción", () => {
+    const r = simularCheques(
+      {
+        ...input,
+        modalidad: "comitente",
+        instrumento: "echeq",
+        condicion_comprador: "mono_cf",
+      },
+      TASAS,
+      ahora
+    );
+    expect(costo(r, "Percepción de IVA")).toBe(0);
+    expect(r.incluye_percepcion).toBe(false);
+    expect(r.descuento_total).toBeCloseTo(10_584.47, 2);
   });
 
   // El plazo que define el tramo es el mismo que se usa para el descuento:
@@ -100,6 +168,38 @@ describe("simularCheques", () => {
     expect(comitente.descuento_total).toBeLessThan(
       simularCheques(input, TASAS, ahora).descuento_total
     );
+  });
+
+  // Fila 7 de la planilla "compra CPD PESOS": cheque de $4.432.155 vendido el
+  // 6/8/2026, vencimiento 27/8, cobro 31/8 (25 días), tasa 42% y arancel 2,5%.
+  it("reproduce la fila de la planilla de cotización real", () => {
+    const tasasPlanilla: Tasas = {
+      ...TASAS,
+      cheques: {
+        ...TASAS.cheques,
+        comitente: [{ hastaDias: 30, tasa: 42, gastos: 2.5 }],
+      },
+    };
+    const r = simularCheques(
+      {
+        monto: 4_432_155,
+        fecha_pago: "2026-08-27",
+        modalidad: "comitente",
+        instrumento: "echeq",
+      },
+      tasasPlanilla,
+      d("2026-08-06")
+    );
+
+    expect(r.fecha_acreditacion_estimada).toBe("2026-08-31");
+    expect(r.dias_considerados).toBe(25);
+    expect(costo(r, "Interés")).toBeCloseTo(123_935.09, 1);
+    expect(costo(r, "Arancel Vertix")).toBeCloseTo(7_589.31, 1);
+    expect(costo(r, "IVA sobre el arancel")).toBeCloseTo(1_593.75, 1);
+    expect(costo(r, "Derechos de mercado")).toBeCloseTo(718.04, 1);
+    expect(costo(r, "IVA sobre los derechos")).toBeCloseTo(150.79, 1);
+    expect(costo(r, "Percepción de IVA")).toBeCloseTo(26_026.37, 1);
+    expect(r.monto_a_recibir).toBeCloseTo(4_272_141.66, 1);
   });
 
   it("la FCE en comitente usa la estimación única", () => {

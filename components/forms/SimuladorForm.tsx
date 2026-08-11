@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Input, NumberInput, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -34,6 +34,11 @@ const INSTRUMENTO = [
   { value: "echeq", label: "Echeq" },
   { value: "fce", label: "FCE (Factura de Crédito Electrónica)" },
 ];
+const CONDICION_COMPRADOR = [
+  { value: "ri", label: "Responsable Inscripto" },
+  { value: "mono_cf", label: "Monotributista o consumidor final" },
+];
+
 const ARS = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
@@ -55,6 +60,14 @@ export function SimuladorForm() {
   const [fechaPago, setFechaPago] = useState("");
   const [modalidad, setModalidad] = useState<ModalidadCheque>("directo");
   const [instrumento, setInstrumento] = useState<InstrumentoCheque>("cheque");
+  const [interno, setInterno] = useState(false);
+
+  // Quien simula desde la web no sabe quién va a comprar el cheque —lo consigue
+  // Vertix—, así que la percepción de IVA se cotiza siempre. Con ?interno=1 el
+  // equipo puede elegir la condición del comprador y ver el número final.
+  useEffect(() => {
+    setInterno(new URLSearchParams(window.location.search).get("interno") === "1");
+  }, []);
 
   // El cheque físico no se negocia en el mercado (sólo directo) y la FCE sólo
   // se negocia ahí (sólo comitente). El echeq admite las dos vías.
@@ -101,6 +114,7 @@ export function SimuladorForm() {
         instrumento: String(raw.instrumento ?? ""),
         cuit_librador: String(raw.cuit_librador ?? ""),
         cuit_endosatario: String(raw.cuit_endosatario ?? ""),
+        ...(interno ? { condicion_comprador: String(raw.condicion_comprador ?? "ri") } : {}),
       };
       const res = await postJson<ChequesResult>("/api/simulador", payload);
       setSubmitting(false);
@@ -218,6 +232,16 @@ export function SimuladorForm() {
                 hint="No puede coincidir con el del librador."
                 error={fe("cuit_endosatario")}
               />
+              {interno && modalidadEfectiva === "comitente" && (
+                <Select
+                  name="condicion_comprador"
+                  label="Condición del comprador frente al IVA"
+                  options={CONDICION_COMPRADOR}
+                  defaultValue="ri"
+                  hint="Sólo visible en el simulador interno. El monotributista y el consumidor final no pagan la percepción."
+                  error={fe("condicion_comprador")}
+                />
+              )}
             </>
           ) : (
             <Input
@@ -332,10 +356,35 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
         />
         <Row label="Tramo de plazo" value={data.tramo} />
         <Row label="Tasa de descuento (TNA)" value={`${data.tna_interes}%`} />
-        {/* La FCE cotiza todo incluido: sin gastos no se muestra la línea. */}
-        {data.arancel > 0 && <Row label="Gastos" value={`${data.arancel}%`} />}
-        <Row label="Tasa total aplicada (TNA)" value={`${data.tna_aplicada}%`} />
+        <Row label="Costo total sobre el nominal" value={`${data.costo_total_pct}%`} />
       </div>
+
+      <h4 className="mb-1 mt-5 text-sm font-semibold uppercase tracking-wide text-vertix/60">
+        Detalle del descuento
+      </h4>
+      <div className="divide-y divide-vertix/10">
+        {data.costos.map((c) => (
+          <div key={c.concepto} className="flex items-baseline justify-between gap-4 py-1.5">
+            <span className="text-sm text-vertix/60">
+              {c.concepto}
+              {c.detalle && (
+                <span className="block text-xs text-vertix/40">{c.detalle}</span>
+              )}
+            </span>
+            <span className="whitespace-nowrap text-base font-semibold tabular-nums text-vertix">
+              {ARS.format(c.monto)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {data.incluye_percepcion && (
+        <p className="mt-3 text-xs text-vertix/60">
+          Incluye la percepción de IVA, que se cobra cuando el comprador es
+          Responsable Inscripto. Si el comprador resulta monotributista o consumidor
+          final, no se cobra y el monto a recibir es mayor.
+        </p>
+      )}
       {data.bcra && (
         <div className="mt-5">
           <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-vertix/60">

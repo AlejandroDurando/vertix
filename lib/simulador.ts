@@ -1,4 +1,7 @@
 import type {
+  CondicionIva,
+  CostoSimulador,
+  ModalidadCheque,
   SimuladorChequesInput,
   SimuladorChequesOutput,
   SimuladorPrestamosInput,
@@ -9,6 +12,7 @@ import type {
 import { describirTramo, tramoParaOperacion } from "./tasas";
 import {
   diasCalendarioEntre,
+  diasHabilesEntre,
   esDiaHabil,
   hoy,
   parseISODate,
@@ -19,10 +23,21 @@ import {
 // Las tasas de la hoja se interpretan como TNA (Tasa Nominal Anual) en %.
 const DIAS_ANIO = 365;
 
+// Los derechos de mercado se prorratean sobre 90 días: por encima se cobran
+// enteros (fórmula de la planilla de cotización).
+const DIAS_DERECHOS = 90;
+
+/**
+ * Por debajo de este plazo, un cheque negociado fuera del mercado de capitales
+ * paga el impuesto al cheque aparte: el interés de tan pocos días no alcanza a
+ * cubrirlo. Más allá queda absorbido por la tasa (confirmado el 07/08/2026).
+ */
+export const DIAS_HABILES_IMPUESTO_CHEQUE = 10;
+
 // La leyenda de aprobación crediticia y gastos de sellados corresponde sólo a
 // préstamos: se quitó de acá por pedido del cliente (25/07/2026).
 const DISCLAIMER_CHEQUES =
-  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. La tasa incluye el arancel de la empresa, pero no contempla otros derechos de mercado ni impuestos que se le cobran al vendedor del cheque. La tasa puede variar.";
+  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. El desglose incluye el arancel de Vertix y los derechos e impuestos que se le cobran al vendedor según la modalidad. La tasa puede variar.";
 
 /**
  * Un cheque se acredita 2 días hábiles después de su fecha de pago si ésta es
@@ -36,6 +51,93 @@ const DISCLAIMER_PRESTAMOS =
   "Cotización orientativa. La tasa final depende de la evaluación crediticia del solicitante y de condiciones de mercado (tasas de caución e intereses bancarios), por eso se muestra un rango. No incluye impuestos ni otros gastos propios del crédito a otorgar (sellados, certificación de firmas, etc.). El otorgamiento depende de aprobación crediticia.";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Porcentaje con coma decimal, como se escribe en castellano. */
+const pct = (n: number) => `${String(n).replace(".", ",")}%`;
+
+/**
+ * Desglose de lo que se le descuenta al vendedor, replicando la planilla de
+ * cotización real ("compra CPD PESOS", 06/08/2026).
+ *
+ * El interés es un **descuento racional**: se despeja el valor presente
+ * (`V − V/(1 + i·d/365)`), no se aplica la tasa sobre el nominal. El arancel,
+ * en cambio, sí se calcula sobre el nominal y prorrateado por días.
+ *
+ * En el mercado de capitales se suman el IVA del arancel, los derechos de
+ * mercado con su IVA y la percepción de IVA sobre el interés. Fuera del
+ * mercado no se cobra nada de eso, pero sí el impuesto al cheque cuando el
+ * plazo es corto.
+ */
+function calcularCostos(opts: {
+  monto: number;
+  dias: number;
+  diasHabilesAlPago: number;
+  tnaInteres: number;
+  arancelPct: number;
+  modalidad: ModalidadCheque;
+  condicionComprador: CondicionIva;
+  tasas: Tasas;
+}): { costos: CostoSimulador[]; incluyePercepcion: boolean } {
+  const { monto, dias, tnaInteres, arancelPct, modalidad, tasas } = opts;
+  const { iva, derechos_mercado, impuesto_cheque } = tasas.costos;
+
+  const interes = monto - monto / (1 + (tnaInteres / 100) * (dias / DIAS_ANIO));
+  const bruto = monto - interes;
+  const arancel = monto * (arancelPct / 100) * (dias / DIAS_ANIO);
+
+  const costos: CostoSimulador[] = [
+    {
+      concepto: "Interés",
+      monto: interes,
+      detalle: `${pct(tnaInteres)} TNA por ${dias} días`,
+    },
+    {
+      concepto: "Arancel Vertix",
+      monto: arancel,
+      detalle: `${pct(arancelPct)} anual por ${dias} días`,
+    },
+  ];
+
+  if (modalidad === "comitente") {
+    // Los derechos se prorratean hasta los 90 días; por encima se cobran enteros.
+    const proporcion = Math.min(dias / DIAS_DERECHOS, 1);
+    const derechos = bruto * (derechos_mercado / 100) * proporcion;
+
+    costos.push(
+      { concepto: "IVA sobre el arancel", monto: arancel * (iva / 100), detalle: pct(iva) },
+      {
+        concepto: "Derechos de mercado",
+        monto: derechos,
+        detalle:
+          dias < DIAS_DERECHOS
+            ? `${pct(derechos_mercado)} prorrateado a ${DIAS_DERECHOS} días`
+            : pct(derechos_mercado),
+      },
+      { concepto: "IVA sobre los derechos", monto: derechos * (iva / 100), detalle: pct(iva) }
+    );
+
+    if (opts.condicionComprador === "ri") {
+      costos.push({
+        concepto: "Percepción de IVA",
+        monto: interes * (iva / 100),
+        detalle: `${pct(iva)} del interés — no se cobra si el comprador es monotributista o consumidor final`,
+      });
+    }
+  } else if (opts.diasHabilesAlPago < DIAS_HABILES_IMPUESTO_CHEQUE) {
+    costos.push({
+      concepto: "Impuesto al cheque",
+      monto: monto * (impuesto_cheque / 100),
+      detalle: `${pct(impuesto_cheque)} del valor nominal, por vencer en menos de ${DIAS_HABILES_IMPUESTO_CHEQUE} días hábiles`,
+    });
+  }
+
+  return {
+    // El interés siempre se muestra; el resto sólo si tiene importe (la FCE,
+    // por ejemplo, cotiza sin arancel).
+    costos: costos.filter((c, i) => i === 0 || c.monto > 0),
+    incluyePercepcion: modalidad === "comitente" && opts.condicionComprador === "ri",
+  };
+}
 
 export function simularCheques(
   input: SimuladorChequesInput,
@@ -56,8 +158,8 @@ export function simularCheques(
     dias,
   });
   const tnaInteres = tramo.tasa;
-  const arancel = tramo.gastos;
-  const tna = tnaInteres + arancel; // TNA total que paga el vendedor
+  const arancelPct = tramo.gastos;
+  const tna = tnaInteres + arancelPct; // TNA total que paga el vendedor
 
   const listaTramos =
     input.modalidad === "comitente"
@@ -66,15 +168,29 @@ export function simularCheques(
         : tasas.cheques.comitente
       : tasas.cheques.directo;
 
-  const descuento = input.monto * (tna / 100) * (dias / DIAS_ANIO);
+  const { costos, incluyePercepcion } = calcularCostos({
+    monto: input.monto,
+    dias,
+    diasHabilesAlPago: diasHabilesEntre(ahora, fechaPago),
+    tnaInteres,
+    arancelPct,
+    modalidad: input.modalidad,
+    condicionComprador: input.condicion_comprador ?? "ri",
+    tasas,
+  });
+
+  const descuento = costos.reduce((total, c) => total + c.monto, 0);
   const monto_a_recibir = input.monto - descuento;
 
   return {
     monto_a_recibir: round2(monto_a_recibir),
     descuento_total: round2(descuento),
+    costos: costos.map((c) => ({ ...c, monto: round2(c.monto) })),
+    costo_total_pct: round2((descuento / input.monto) * 100),
     tna_aplicada: round2(tna),
     tna_interes: tnaInteres,
-    arancel,
+    arancel: arancelPct,
+    incluye_percepcion: incluyePercepcion,
     tramo: describirTramo(tramo, listaTramos),
     modalidad: input.modalidad,
     dias_considerados: dias,

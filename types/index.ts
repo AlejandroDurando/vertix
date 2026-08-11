@@ -49,19 +49,42 @@ export type TasasCheques = {
   comitenteFce: TramoTasa;
 };
 
+/**
+ * Costos que se le cobran al vendedor además de la tasa, tomados de la planilla
+ * de cotización real ("compra CPD PESOS", 06/08/2026). Todos en %.
+ */
+export type CostosOperacion = {
+  /** IVA general que grava el arancel, los derechos y el interés. */
+  iva: number;
+  /** Derechos de mercado del vendedor, prorrateados sobre 90 días. */
+  derechos_mercado: number;
+  /** Impuesto al cheque, sobre el valor nominal (sólo fuera del mercado). */
+  impuesto_cheque: number;
+};
+
 export type Tasas = {
   cheques: TasasCheques;
+  costos: CostosOperacion;
   prestamos_ph: number;
   prestamos_pj: number;
   actualizado_el: string;
 };
 
 // --- Simulador: cheques ---
+/**
+ * Condición del comprador frente al IVA. Define si se cobra la percepción: el
+ * monotributista y el consumidor final no la pagan. Quien simula desde la web
+ * no sabe quién va a comprar (lo consigue Vertix), así que se cotiza el peor
+ * caso — "ri" — y se ajusta en la cotización real.
+ */
+export type CondicionIva = "ri" | "mono_cf";
+
 export type SimuladorChequesInput = {
   monto: number;
   fecha_pago: string; // YYYY-MM-DD
   modalidad: ModalidadCheque;
   instrumento: InstrumentoCheque;
+  condicion_comprador?: CondicionIva;
 };
 
 export type BcraEstado = "ok" | "analisis" | "riesgo" | "no_verificado";
@@ -74,12 +97,26 @@ export type BcraInfo = {
   mensaje: string;
 };
 
+/** Una línea del desglose de lo que se le descuenta al vendedor, en pesos. */
+export type CostoSimulador = {
+  concepto: string;
+  monto: number;
+  /** Detalle del cálculo, para mostrarlo junto al importe. */
+  detalle?: string;
+};
+
 export type SimuladorChequesOutput = {
   monto_a_recibir: number;
   descuento_total: number;
+  /** Interés, arancel, IVA, derechos, percepción e impuesto al cheque. */
+  costos: CostoSimulador[];
+  /** Descuento total como % del valor nominal (incluye impuestos y derechos). */
+  costo_total_pct: number;
   tna_aplicada: number; // % anual TOTAL (interés + gastos)
   tna_interes: number; // % anual, componente de descuento
   arancel: number; // % anual, gastos de Vertix
+  /** Si el resultado incluye la percepción de IVA (comprador RI). */
+  incluye_percepcion: boolean;
   /** Tramo de plazo aplicado, para mostrarlo en el resultado. */
   tramo: string;
   modalidad: ModalidadCheque;
