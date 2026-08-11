@@ -5,7 +5,13 @@ import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { readUploads } from "@/lib/uploads";
 import { appendAlta } from "@/lib/sheets-crm";
 import { emailAlta, emailConfirmacionAlta } from "@/lib/email";
-import { carpetaDe, enlaceDescarga, enlaceLegajo } from "@/lib/storage";
+import {
+  carpetaDe,
+  enlaceDescarga,
+  enlaceLegajo,
+  marcarLegajoCompleto,
+} from "@/lib/storage";
+import { hoy, toISODate } from "@/lib/fechas";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -181,6 +187,17 @@ export async function POST(req: NextRequest) {
       503
     );
   }
+
+  // Recién ahora la carpeta es un legajo: hasta acá podía ser un intento
+  // abandonado o un reenvío. Es lo que hace que aparezca en /legajos.
+  await marcarLegajoCompleto(carpeta, {
+    tramite: "alta",
+    nombre:
+      data.tipo === "fisica" ? `${data.apellido} ${data.nombre}` : data.razon_social,
+    cuit: data.cuit,
+    email: data.email,
+    recibido_el: toISODate(hoy()),
+  });
 
   // Confirmación al solicitante (best-effort, pero awaited por serverless).
   const confirmacion = await emailConfirmacionAlta(data.email, {

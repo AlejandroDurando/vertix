@@ -3,7 +3,13 @@ import { firstZodError, precalificacionSchema } from "@/lib/validations";
 import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { readUploads, type ParsedFile, type SubidoRef } from "@/lib/uploads";
-import { carpetaDe, enlaceDescarga, enlaceLegajo } from "@/lib/storage";
+import {
+  carpetaDe,
+  enlaceDescarga,
+  enlaceLegajo,
+  marcarLegajoCompleto,
+} from "@/lib/storage";
+import { hoy, toISODate } from "@/lib/fechas";
 import { appendPrecalificacion } from "@/lib/sheets-crm";
 import { emailConfirmacionPrecalificacion, emailPrecalificacion } from "@/lib/email";
 import { upsertHubspotContact } from "@/lib/hubspot";
@@ -148,6 +154,16 @@ export async function POST(req: NextRequest) {
       503
     );
   }
+
+  // Recién ahora la carpeta es un legajo: hasta acá podía ser un intento
+  // abandonado o un reenvío. Es lo que hace que aparezca en /legajos.
+  await marcarLegajoCompleto(carpetaLegajo, {
+    tramite: "precalificacion",
+    nombre: data.servicio === "cheques" ? data.empresa || data.nombre : data.nombre,
+    cuit: data.servicio === "cheques" ? data.cuit_endosatario : data.cuit_solicitante,
+    email: data.email,
+    recibido_el: toISODate(hoy()),
+  });
 
   // Reporte al solicitante + HubSpot (best-effort, pero awaited por serverless).
   const confirmacion = await emailConfirmacionPrecalificacion(data.email, {

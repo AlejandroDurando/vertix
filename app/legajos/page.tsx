@@ -32,10 +32,15 @@ const pesar = (b: number) =>
 const fmtFecha = (iso: string) => (iso ? iso.split("-").reverse().join("/") : "sin fecha");
 
 /**
- * La carpeta se guarda como `20123456786-Perez-Juan`. Se separa el CUIT del
- * nombre para mostrarlos por separado.
+ * Los datos salen del marcador que guarda el servidor con el formulario ya
+ * validado. Si faltara, se cae al nombre de la carpeta
+ * (`20123456786-Perez-Juan`), que lo arma el navegador.
  */
-function mostrarCliente(cliente: string | null): { cuit: string; nombre: string } {
+function mostrarCliente(legajo: ResumenLegajo): { cuit: string; nombre: string } {
+  if (legajo.datos) {
+    return { cuit: legajo.datos.cuit, nombre: legajo.datos.nombre };
+  }
+  const cliente = legajo.cliente;
   if (!cliente || cliente === "sin-identificar") return { cuit: "", nombre: "Sin identificar" };
   const m = /^(\d{11})-?(.*)$/.exec(cliente);
   if (!m) return { cuit: "", nombre: cliente.replace(/-/g, " ") };
@@ -60,7 +65,7 @@ function Aviso({ children }: { children: React.ReactNode }) {
 }
 
 function FilaLegajo({ legajo }: { legajo: ResumenLegajo }) {
-  const { cuit, nombre } = mostrarCliente(legajo.cliente);
+  const { cuit, nombre } = mostrarCliente(legajo);
   return (
     <a
       // Enlace relativo: el de `enlaceLegajo` es absoluto y depende de APP_URL,
@@ -90,9 +95,19 @@ export default async function LegajosPage() {
     return <Aviso>El almacenamiento de documentos no está configurado.</Aviso>;
   }
 
-  const legajos = await listarLegajos();
+  const { legajos, incompletos } = await listarLegajos();
   if (legajos.length === 0) {
-    return <Aviso>Todavía no se recibió documentación.</Aviso>;
+    return (
+      <Aviso>
+        Todavía no se recibió ninguna solicitud completa.
+        {incompletos > 0 && (
+          <span className="mt-2 block text-sm text-vertix/60">
+            Hay {incompletos} carpeta{incompletos === 1 ? "" : "s"} con archivos de
+            envíos que no se completaron. No se listan.
+          </span>
+        )}
+      </Aviso>
+    );
   }
 
   const grupos = Object.entries(TRAMITES)
@@ -126,7 +141,15 @@ export default async function LegajosPage() {
           </section>
         ))}
 
-        <p className="mt-10 text-xs text-vertix/50">
+        {incompletos > 0 && (
+          <p className="mt-10 text-xs text-vertix/50">
+            No se listan {incompletos} carpeta{incompletos === 1 ? "" : "s"} con
+            archivos de envíos que quedaron a medio camino (la persona cerró el
+            formulario, o lo corrigió y lo mandó de nuevo).
+          </p>
+        )}
+
+        <p className="mt-4 text-xs text-vertix/50">
           Esta página lista documentación personal de los solicitantes. No la
           compartas fuera de Vertix.
         </p>

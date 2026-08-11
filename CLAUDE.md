@@ -68,8 +68,15 @@ ese nivel y aparecen "sin identificar": `partesCarpeta()` entiende las dos forma
 En el CRM va **un solo enlace por fila** (`enlaceLegajo`) a `/legajo`, que muestra los documentos
 con las fotos previsualizadas y un botón para bajar todo en un zip (`/api/adjuntos/zip`). Se probó
 poner un enlace por documento en la misma celda y es impracticable: Sheets no los hace clicables
-por separado. **`/legajos`** (plural) lista todos los envíos agrupados por trámite, para no entrar
-fila por fila al CRM. Ninguna de las dos tiene login — decisión del cliente del 07/08/2026, con el
+por separado. **`/legajos`** (plural) lista los envíos agrupados por trámite, para no entrar fila
+por fila al CRM.
+
+**Sólo cuenta como legajo la carpeta con `_legajo.json`.** Los archivos se suben *antes* de enviar
+el formulario, así que un intento abandonado —o uno que el server rechazó, se corrigió y se
+reenvió— deja una carpeta huérfana con documentos. Las rutas escriben ese marcador
+(`marcarLegajoCompleto`) recién cuando la solicitud quedó registrada, con el nombre y CUIT ya
+validados; `/legajos` lista sólo esas y cuenta las demás al pie. El marcador no se muestra como
+documento ni entra al zip. Ninguna de las dos tiene login — decisión del cliente del 07/08/2026, con el
 bucket todavía en pruebas; van marcadas `noindex`. Cuando entren legajos reales hay que ponerle
 contraseña a `/legajos`, que expone en un solo lugar los datos de todos los clientes.
 

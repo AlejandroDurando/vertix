@@ -148,7 +148,8 @@ export async function listarLegajo(carpeta: string): Promise<DocumentoLegajo[]> 
     new ListObjectsV2Command({ Bucket: process.env.S3_BUCKET, Prefix: carpeta })
   );
   return (res.Contents ?? [])
-    .filter((o) => o.Key && o.Size != null)
+    // El marcador no es un documento del solicitante: no se muestra ni se baja.
+    .filter((o) => o.Key && o.Size != null && !o.Key.endsWith(MARCADOR_LEGAJO))
     .sort((a, b) => (a.LastModified?.getTime() ?? 0) - (b.LastModified?.getTime() ?? 0))
     .map((o) => {
       const archivo = o.Key!.slice(carpeta.length);
@@ -162,6 +163,57 @@ export async function listarLegajo(carpeta: string): Promise<DocumentoLegajo[]> 
     });
 }
 
+/**
+ * Archivo que marca que el envío se completó.
+ *
+ * Los documentos se suben ANTES de que el formulario se envíe, así que un
+ * intento abandonado —o uno que el servidor rechazó y la persona corrigió y
+ * volvió a mandar— deja una carpeta con archivos que no corresponde a ninguna
+ * solicitud. Sólo las carpetas con este archivo son legajos de verdad.
+ */
+export const MARCADOR_LEGAJO = "_legajo.json";
+
+export type DatosLegajo = {
+  tramite: string;
+  /** Razón social, o apellido y nombre. */
+  nombre: string;
+  cuit: string;
+  email?: string;
+  recibido_el: string; // YYYY-MM-DD
+};
+
+/** Marca la carpeta como legajo completo. Nunca lanza: no debe tumbar el envío. */
+export async function marcarLegajoCompleto(
+  carpeta: string,
+  datos: DatosLegajo
+): Promise<void> {
+  if (!carpeta || !storageHabilitado()) return;
+  try {
+    await getCliente().send(
+      new PutObjectCommand({
+        Bucket: process.env.S3_BUCKET,
+        Key: `${carpeta}${MARCADOR_LEGAJO}`,
+        Body: JSON.stringify(datos),
+        ContentType: "application/json",
+      })
+    );
+  } catch (err) {
+    logger.error("storage", "No se pudo marcar el legajo como completo", {
+      carpeta,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function leerDatosLegajo(carpeta: string): Promise<DatosLegajo | null> {
+  try {
+    const crudo = await leerObjeto(`${carpeta}${MARCADOR_LEGAJO}`);
+    return JSON.parse(crudo.toString("utf8")) as DatosLegajo;
+  } catch {
+    return null;
+  }
+}
+
 export type ResumenLegajo = {
   carpeta: string;
   tramite: string;
@@ -170,17 +222,25 @@ export type ResumenLegajo = {
   fecha: string; // YYYY-MM-DD
   documentos: number;
   bytes: number;
+  datos: DatosLegajo | null;
 };
 
 /** Tope de objetos que recorre el índice; hoy hay decenas, no miles. */
 const MAX_OBJETOS_INDICE = 5000;
 
 /**
- * Todos los legajos del bucket, agrupados por carpeta y ordenados del más
+ * Los legajos completos del bucket, agrupados por carpeta y ordenados del más
  * reciente al más viejo. Alimenta la página /legajos.
+ *
+ * `incompletos` cuenta las carpetas con archivos pero sin envío confirmado, que
+ * no se listan: son intentos abandonados o reenvíos.
  */
-export async function listarLegajos(): Promise<ResumenLegajo[]> {
+export async function listarLegajos(): Promise<{
+  legajos: ResumenLegajo[];
+  incompletos: number;
+}> {
   const porCarpeta = new Map<string, ResumenLegajo>();
+  const completas = new Set<string>();
   let token: string | undefined;
   let leidos = 0;
 
@@ -197,6 +257,11 @@ export async function listarLegajos(): Promise<ResumenLegajo[]> {
       const carpeta = carpetaDe(obj.Key);
       if (!carpeta) continue;
 
+      if (obj.Key.endsWith(MARCADOR_LEGAJO)) {
+        completas.add(carpeta);
+        continue; // el marcador no es un documento del legajo
+      }
+
       const actual = porCarpeta.get(carpeta);
       if (actual) {
         actual.documentos += 1;
@@ -207,6 +272,7 @@ export async function listarLegajos(): Promise<ResumenLegajo[]> {
           ...partesCarpeta(carpeta),
           documentos: 1,
           bytes: obj.Size,
+          datos: null,
         });
       }
     }
@@ -215,7 +281,20 @@ export async function listarLegajos(): Promise<ResumenLegajo[]> {
     token = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (token && leidos < MAX_OBJETOS_INDICE);
 
-  return [...porCarpeta.values()].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const legajos = [...porCarpeta.values()].filter((l) => completas.has(l.carpeta));
+
+  // Los datos del cliente salen del marcador, que los guardó el servidor con el
+  // formulario ya validado.
+  await Promise.all(
+    legajos.map(async (l) => {
+      l.datos = await leerDatosLegajo(l.carpeta);
+    })
+  );
+
+  return {
+    legajos: legajos.sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    incompletos: porCarpeta.size - legajos.length,
+  };
 }
 
 /** Descarga el contenido de un objeto (para armar el zip). */
