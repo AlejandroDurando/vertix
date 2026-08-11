@@ -58,13 +58,20 @@ mandan sólo `<campo>__clave` + `<campo>__nombre`. `lib/uploads.ts` los devuelve
 los chequeos de obligatorios un documento cuenta igual venga por `files` o por `subidos`. Antes de
 subir, `lib/adjuntos-client.ts` comprime las imágenes en el navegador.
 
-**El legajo es la carpeta.** Todos los documentos de un envío comparten el `tramiteId` que genera el
-navegador, así que la clave queda `tramite/fecha/<id>/campo-nombre` y la carpeta se puede listar
-entera. En el CRM va **un solo enlace por fila** (`enlaceLegajo`) a `/legajo`, que muestra los
-documentos con las fotos previsualizadas y un botón para bajar todo en un zip
-(`/api/adjuntos/zip`). Se probó poner un enlace por documento en la misma celda y es impracticable:
-Sheets no los hace clicables por separado. La página no tiene login: el acceso depende del token de
-la carpeta, igual que los documentos sueltos.
+**El legajo es la carpeta, y las carpetas se agrupan por cliente.** La clave es
+`tramite/<cuit-nombre>/<fecha>-<tramiteId>/campo-nombre`: el `tramiteId` lo genera el navegador y
+lo comparten todos los documentos de un envío, y el nivel del cliente hace que sus envíos queden
+juntos (`identidadCliente()` en `lib/adjuntos-client.ts` lo arma con lo que ya cargó en el
+formulario; el CUIT es la parte confiable). Los legajos anteriores al 07/08/2026 tienen la fecha en
+ese nivel y aparecen "sin identificar": `partesCarpeta()` entiende las dos formas.
+
+En el CRM va **un solo enlace por fila** (`enlaceLegajo`) a `/legajo`, que muestra los documentos
+con las fotos previsualizadas y un botón para bajar todo en un zip (`/api/adjuntos/zip`). Se probó
+poner un enlace por documento en la misma celda y es impracticable: Sheets no los hace clicables
+por separado. **`/legajos`** (plural) lista todos los envíos agrupados por trámite, para no entrar
+fila por fila al CRM. Ninguna de las dos tiene login — decisión del cliente del 07/08/2026, con el
+bucket todavía en pruebas; van marcadas `noindex`. Cuando entren legajos reales hay que ponerle
+contraseña a `/legajos`, que expone en un solo lugar los datos de todos los clientes.
 
 Todas las rutas comparten `lib/rate-limit.ts` (in-memory por IP, ver pendiente #5) y `lib/logger.ts`
 (logger JSON que redacta PII). `lib/hubspot.ts` se llama desde contacto/precalificación pero es un

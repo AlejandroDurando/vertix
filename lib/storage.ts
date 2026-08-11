@@ -30,6 +30,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { hoy } from "./fechas";
 import { logger } from "./logger";
 
 /** Minutos que vive la URL de subida. Alcanza de sobra para un archivo. */
@@ -76,24 +77,32 @@ export function normalizarNombre(nombre: string): string {
 }
 
 /**
- * Clave del objeto: `tramite/fecha/id-del-envío/campo-nombre`.
+ * Clave del objeto: `tramite/cliente/fecha-id-del-envío/campo-nombre`.
  *
  * Todos los documentos de un mismo envío comparten el `tramiteId`, así que la
  * carpeta ES el legajo: se puede listar completo con una sola consulta y
  * entregarlo en un zip. El id es un UUID, con lo cual la carpeta tampoco se
  * puede adivinar.
+ *
+ * El segundo nivel es el cliente para que todos sus envíos queden juntos. Los
+ * legajos anteriores al 07/08/2026 tienen la fecha en ese nivel, sin registro
+ * de a quién pertenecen: `partesCarpeta()` entiende las dos formas.
  */
 export function construirClave(opts: {
   tramite: string; // "alta" | "precalificacion"
+  cliente?: string;
   tramiteId: string;
   campo: string;
   nombre: string;
   fecha?: Date;
 }): string {
-  const f = opts.fecha ?? new Date();
+  // hoy() y no new Date(): el servidor corre en UTC y a partir de las 21:00 ART
+  // un legajo quedaría archivado con la fecha del día siguiente.
+  const f = opts.fecha ?? hoy();
   const dia = f.toISOString().slice(0, 10);
   const id = /^[0-9a-f-]{36}$/i.test(opts.tramiteId) ? opts.tramiteId : randomUUID();
-  return `${opts.tramite}/${dia}/${id}/${normalizarNombre(
+  const cliente = normalizarNombre(opts.cliente?.trim() || "sin-identificar");
+  return `${opts.tramite}/${cliente}/${dia}-${id}/${normalizarNombre(
     opts.campo
   )}-${normalizarNombre(opts.nombre)}`;
 }
@@ -102,6 +111,28 @@ export function construirClave(opts: {
 export function carpetaDe(clave: string): string {
   const partes = clave.split("/");
   return partes.length >= 4 ? partes.slice(0, 3).join("/") + "/" : "";
+}
+
+const EMPIEZA_CON_FECHA = /^(\d{4}-\d{2}-\d{2})/;
+
+/**
+ * Descompone la carpeta de un legajo en sus partes legibles, soportando las dos
+ * estructuras: la actual (`tramite/cliente/fecha-id/`) y la anterior
+ * (`tramite/fecha/id/`), que no registraba el cliente.
+ */
+export function partesCarpeta(carpeta: string): {
+  tramite: string;
+  cliente: string | null;
+  fecha: string;
+} {
+  const [tramite = "", segundo = "", tercero = ""] = carpeta.split("/");
+  const fechaVieja = EMPIEZA_CON_FECHA.exec(segundo);
+  if (fechaVieja) return { tramite, cliente: null, fecha: fechaVieja[1] };
+  return {
+    tramite,
+    cliente: segundo || null,
+    fecha: EMPIEZA_CON_FECHA.exec(tercero)?.[1] ?? "",
+  };
 }
 
 export type DocumentoLegajo = {
@@ -129,6 +160,62 @@ export async function listarLegajo(carpeta: string): Promise<DocumentoLegajo[]> 
         bytes: o.Size!,
       };
     });
+}
+
+export type ResumenLegajo = {
+  carpeta: string;
+  tramite: string;
+  /** Carpeta del cliente; `null` en los legajos viejos, que no la registraban. */
+  cliente: string | null;
+  fecha: string; // YYYY-MM-DD
+  documentos: number;
+  bytes: number;
+};
+
+/** Tope de objetos que recorre el índice; hoy hay decenas, no miles. */
+const MAX_OBJETOS_INDICE = 5000;
+
+/**
+ * Todos los legajos del bucket, agrupados por carpeta y ordenados del más
+ * reciente al más viejo. Alimenta la página /legajos.
+ */
+export async function listarLegajos(): Promise<ResumenLegajo[]> {
+  const porCarpeta = new Map<string, ResumenLegajo>();
+  let token: string | undefined;
+  let leidos = 0;
+
+  do {
+    const res = await getCliente().send(
+      new ListObjectsV2Command({
+        Bucket: process.env.S3_BUCKET,
+        ContinuationToken: token,
+      })
+    );
+
+    for (const obj of res.Contents ?? []) {
+      if (!obj.Key || obj.Size == null) continue;
+      const carpeta = carpetaDe(obj.Key);
+      if (!carpeta) continue;
+
+      const actual = porCarpeta.get(carpeta);
+      if (actual) {
+        actual.documentos += 1;
+        actual.bytes += obj.Size;
+      } else {
+        porCarpeta.set(carpeta, {
+          carpeta,
+          ...partesCarpeta(carpeta),
+          documentos: 1,
+          bytes: obj.Size,
+        });
+      }
+    }
+
+    leidos += res.Contents?.length ?? 0;
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token && leidos < MAX_OBJETOS_INDICE);
+
+  return [...porCarpeta.values()].sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
 /** Descarga el contenido de un objeto (para armar el zip). */

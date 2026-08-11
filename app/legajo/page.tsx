@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   enlaceDescarga,
   listarLegajo,
+  partesCarpeta,
   storageHabilitado,
   tokenDescarga,
   tokenValido,
@@ -9,6 +10,11 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+export const metadata = {
+  title: "Legajo — Vertix",
+  robots: { index: false, follow: false },
+};
 
 /**
  * Vista interna de un legajo: todos los documentos de un envío en una sola
@@ -83,7 +89,7 @@ export default async function LegajoPage({
     return <Aviso>Este legajo todavía no tiene documentos cargados.</Aviso>;
   }
 
-  const [tramite, dia] = carpeta.split("/");
+  const { tramite, fecha } = partesCarpeta(carpeta);
   const total = docs.reduce((s, d) => s + d.bytes, 0);
   const zip = `/api/adjuntos/zip?carpeta=${encodeURIComponent(carpeta)}&token=${tokenDescarga(carpeta)}`;
 
@@ -99,8 +105,13 @@ export default async function LegajoPage({
               Documentación recibida
             </h1>
             <p className="mt-2 text-sm text-vertix/60">
-              {docs.length} documento{docs.length === 1 ? "" : "s"} · {pesar(total)} · recibidos el{" "}
-              {dia?.split("-").reverse().join("/")}
+              {docs.length} documento{docs.length === 1 ? "" : "s"} · {pesar(total)}
+              {fecha && ` · recibidos el ${fecha.split("-").reverse().join("/")}`}
+            </p>
+            <p className="mt-2 text-sm">
+              <Link href="/legajos" className="text-vertix underline">
+                ← Ver todos los legajos
+              </Link>
             </p>
           </div>
           <a

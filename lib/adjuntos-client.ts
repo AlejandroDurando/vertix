@@ -108,6 +108,28 @@ export async function comprimirAdjuntos(fd: FormData): Promise<ResumenAdjuntos> 
   return { total, archivos };
 }
 
+const texto = (fd: FormData, campo: string) => String(fd.get(campo) ?? "").trim();
+const primero = (fd: FormData, ...campos: string[]) =>
+  campos.map((c) => texto(fd, c)).find(Boolean) ?? "";
+
+/**
+ * Con qué nombre se identifica al cliente en el bucket: `cuit-nombre`, para que
+ * todos sus envíos queden en la misma carpeta y el índice se lea sin datos
+ * extra. Sale de lo que ya cargó en el formulario, así que el CUIT es la parte
+ * confiable y el nombre sólo lo hace legible.
+ */
+export function identidadCliente(fd: FormData): string {
+  const cuit = primero(fd, "cuit", "cuit_endosatario", "cuit_solicitante");
+  const apellido = texto(fd, "apellido");
+  const nombre = texto(fd, "nombre");
+  const legible =
+    primero(fd, "razon_social") ||
+    (apellido && nombre ? `${apellido} ${nombre}` : "") ||
+    primero(fd, "empresa", "nombre", "apellido");
+
+  return [cuit.replace(/\D/g, ""), legible].filter(Boolean).join(" ");
+}
+
 /**
  * Sube los archivos directo al bucket y reemplaza cada campo de archivo del
  * FormData por su referencia (`campo__clave` y `campo__nombre`), de modo que el
@@ -128,8 +150,10 @@ export async function subirAdjuntos(
   if (entradas.length === 0) return "ok";
 
   // Un id por envío: agrupa todos los documentos en una misma carpeta del
-  // bucket, que es lo que después se abre como legajo.
+  // bucket, que es lo que después se abre como legajo. El cliente es el nivel
+  // de arriba, para que sus envíos queden juntos.
   const tramiteId = crypto.randomUUID();
+  const cliente = identidadCliente(fd);
 
   for (const [campo, file] of entradas) {
     let firma: Response;
@@ -140,6 +164,7 @@ export async function subirAdjuntos(
         body: JSON.stringify({
           tramite,
           tramiteId,
+          cliente,
           campo,
           nombre: file.name,
           tipo: file.type,

@@ -4,6 +4,7 @@ import {
   construirClave,
   enlaceDescarga,
   normalizarNombre,
+  partesCarpeta,
   storageHabilitado,
   tokenDescarga,
   tokenValido,
@@ -54,7 +55,21 @@ describe("normalizarNombre", () => {
 describe("construirClave", () => {
   const ID = "3f2a1b7c-1111-4222-8333-444455556666";
 
-  it("agrupa por trámite, fecha e id del envío", () => {
+  it("agrupa por trámite, cliente y envío", () => {
+    const clave = construirClave({
+      tramite: "alta",
+      cliente: "20123456786 Perez Juan",
+      tramiteId: ID,
+      campo: "dni_frente",
+      nombre: "foto.jpg",
+      fecha: new Date("2026-07-26T12:00:00Z"),
+    });
+    expect(clave).toBe(
+      `alta/20123456786-Perez-Juan/2026-07-26-${ID}/dni_frente-foto.jpg`
+    );
+  });
+
+  it("marca el legajo sin cliente cuando el formulario no lo trae", () => {
     const clave = construirClave({
       tramite: "alta",
       tramiteId: ID,
@@ -62,17 +77,34 @@ describe("construirClave", () => {
       nombre: "foto.jpg",
       fecha: new Date("2026-07-26T12:00:00Z"),
     });
-    expect(clave).toBe(`alta/2026-07-26/${ID}/dni_frente-foto.jpg`);
+    expect(clave).toContain("alta/sin-identificar/");
   });
 
   // Todos los documentos de un envío tienen que caer en la misma carpeta:
   // eso es lo que permite abrir el legajo completo con un solo enlace.
   it("pone los documentos del mismo envío en una carpeta común", () => {
-    const base = { tramite: "alta", tramiteId: ID, fecha: new Date("2026-07-26T12:00:00Z") };
+    const base = {
+      tramite: "alta",
+      cliente: "20123456786 Perez",
+      tramiteId: ID,
+      fecha: new Date("2026-07-26T12:00:00Z"),
+    };
     const a = construirClave({ ...base, campo: "dni_frente", nombre: "a.jpg" });
     const b = construirClave({ ...base, campo: "selfie_dni", nombre: "b.jpg" });
     expect(carpetaDe(a)).toBe(carpetaDe(b));
-    expect(carpetaDe(a)).toBe(`alta/2026-07-26/${ID}/`);
+    expect(carpetaDe(a)).toBe(`alta/20123456786-Perez/2026-07-26-${ID}/`);
+  });
+
+  it("no deja que el nombre del cliente escape de la carpeta", () => {
+    const clave = construirClave({
+      tramite: "alta",
+      cliente: "../../otro",
+      tramiteId: ID,
+      campo: "dni_frente",
+      nombre: "foto.jpg",
+    });
+    expect(clave).not.toContain("..");
+    expect(clave.split("/")).toHaveLength(4);
   });
 
   it("ignora un id que no sea un UUID", () => {
@@ -85,6 +117,28 @@ describe("construirClave", () => {
     });
     expect(clave).not.toContain("..");
     expect(clave.split("/")).toHaveLength(4);
+  });
+});
+
+describe("partesCarpeta", () => {
+  const ID = "3f2a1b7c-1111-4222-8333-444455556666";
+
+  it("lee la estructura actual, con el cliente en el segundo nivel", () => {
+    expect(partesCarpeta(`alta/20123456786-Perez/2026-07-26-${ID}/`)).toEqual({
+      tramite: "alta",
+      cliente: "20123456786-Perez",
+      fecha: "2026-07-26",
+    });
+  });
+
+  // Los legajos anteriores al 07/08/2026 tienen la fecha donde ahora va el
+  // cliente: se siguen listando, sin identificar.
+  it("lee la estructura vieja sin romperse", () => {
+    expect(partesCarpeta(`precalificacion/2026-08-02/${ID}/`)).toEqual({
+      tramite: "precalificacion",
+      cliente: null,
+      fecha: "2026-08-02",
+    });
   });
 });
 

@@ -20,6 +20,10 @@ const schema = z
     // Identificador del envío: lo genera el navegador y lo repite en cada
     // documento, para que todos caigan en la misma carpeta (el legajo).
     tramiteId: z.string().uuid(),
+    // Cómo se identifica al cliente en el bucket. Lo arma el navegador con lo
+    // que ya cargó en el formulario; el servidor lo normaliza antes de usarlo
+    // como nombre de carpeta.
+    cliente: z.string().trim().max(160).optional(),
     campo: z.string().trim().min(1).max(60),
     nombre: z.string().trim().min(1).max(200),
     tipo: z.string().trim().min(1),
@@ -67,8 +71,8 @@ export async function POST(req: NextRequest) {
     return fail(message, 400, field);
   }
 
-  const { tramite, tramiteId, campo, nombre, tipo } = parsed.data;
-  const clave = construirClave({ tramite, tramiteId, campo, nombre });
+  const { tramite, tramiteId, cliente, campo, nombre, tipo } = parsed.data;
+  const clave = construirClave({ tramite, tramiteId, cliente, campo, nombre });
 
   try {
     const url = await firmarSubida({ clave, tipo });
