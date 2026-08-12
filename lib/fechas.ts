@@ -31,17 +31,27 @@ const FERIADOS_AR = new Set<string>([
   "2026-11-23", // Soberanía (trasladado)
   "2026-12-08", // Inmaculada Concepción
   "2026-12-25", // Navidad
-  // 2027 (parcial, principales fijos)
-  "2027-01-01",
-  "2027-03-24",
-  "2027-04-02",
-  "2027-05-01",
-  "2027-05-25",
-  "2027-06-20",
-  "2027-07-09",
-  "2027-08-17",
-  "2027-12-08",
-  "2027-12-25",
+  // 2027. Los trasladables van en su fecha corrida según la Ley 27.399
+  // (martes/miércoles al lunes anterior, jueves/viernes al lunes siguiente).
+  // ⚠️ Faltan los días no laborables con fines turísticos, que se decretan
+  // año a año y todavía no están publicados.
+  "2027-01-01", // Año Nuevo
+  "2027-02-08", // Carnaval
+  "2027-02-09", // Carnaval
+  "2027-03-24", // Día de la Memoria
+  "2027-03-25", // Jueves Santo (no laborable: bancos y mercados cerrados)
+  "2027-03-26", // Viernes Santo
+  "2027-04-02", // Malvinas
+  "2027-05-01", // Día del Trabajador
+  "2027-05-25", // Revolución de Mayo
+  "2027-06-21", // Güemes (17/6 cae jueves → lunes siguiente)
+  "2027-06-20", // Belgrano
+  "2027-07-09", // Independencia
+  "2027-08-16", // San Martín (17/8 cae martes → lunes anterior)
+  "2027-10-11", // Diversidad Cultural (12/10 cae martes → lunes anterior)
+  "2027-11-20", // Soberanía Nacional (cae sábado, no se traslada)
+  "2027-12-08", // Inmaculada Concepción
+  "2027-12-25", // Navidad
 ]);
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;

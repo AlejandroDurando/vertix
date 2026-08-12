@@ -56,10 +56,18 @@ export type TasasCheques = {
 export type CostosOperacion = {
   /** IVA general que grava el arancel, los derechos y el interés. */
   iva: number;
+  /**
+   * IVA sobre los gastos de Vertix fuera del mercado de capitales. Es una fila
+   * aparte para poder apagarlo (en 0) sin tocar el IVA del mercado: está a
+   * confirmación de Martín (07/08/2026).
+   */
+  iva_directo: number;
   /** Derechos de mercado del vendedor, prorrateados sobre 90 días. */
   derechos_mercado: number;
   /** Impuesto al cheque, sobre el valor nominal (sólo fuera del mercado). */
   impuesto_cheque: number;
+  /** Piso del arancel en pesos: AdCap cobra este mínimo si el cálculo da menos. */
+  arancel_minimo: number;
 };
 
 export type Tasas = {
@@ -80,7 +88,13 @@ export type Tasas = {
 export type CondicionIva = "ri" | "mono_cf";
 
 export type SimuladorChequesInput = {
+  /** Valor nominal. En la FCE, el total de la factura. */
   monto: number;
+  /**
+   * Sólo FCE: parte de la factura que el comprador acepta y que es lo que
+   * realmente se negocia (en el ejemplo del cliente, el 80% del total).
+   */
+  monto_aceptado?: number;
   fecha_pago: string; // YYYY-MM-DD
   modalidad: ModalidadCheque;
   instrumento: InstrumentoCheque;
@@ -106,6 +120,8 @@ export type CostoSimulador = {
 };
 
 export type SimuladorChequesOutput = {
+  /** Importe sobre el que se cotizó: el nominal, o el aceptado en la FCE. */
+  monto_negociado: number;
   monto_a_recibir: number;
   descuento_total: number;
   /** Interés, arancel, IVA, derechos, percepción e impuesto al cheque. */

@@ -8,7 +8,10 @@ import type {
   TramoTasa,
 } from "@/types";
 
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hora
+// 1 minuto: los dueños ajustan tasas varias veces por semana y necesitan verlo
+// enseguida (pedido del cliente, 07/08/2026). Con este TTL una tanda de
+// simulaciones sigue resolviéndose sin volver a llamar a Sheets.
+const CACHE_TTL_MS = 60 * 1000;
 const SHEET_RANGE = "tasas!A1:C100";
 
 type CacheEntry = {
@@ -26,8 +29,10 @@ let inflight: Promise<Tasas> | null = null;
  */
 const COSTOS_POR_DEFECTO: CostosOperacion = {
   iva: 21,
+  iva_directo: 21,
   derechos_mercado: 0.06,
   impuesto_cheque: 1.2,
+  arancel_minimo: 500,
 };
 
 // Valores expresados como TNA (Tasa Nominal Anual) en %. La hoja "tasas" de
@@ -44,8 +49,9 @@ const FALLBACK_TASAS: Tasas = {
       { hastaDias: 60, tasa: 43, gastos: 2.5 },
       { hastaDias: null, tasa: 45, gastos: 2.5 },
     ],
-    // La FCE cotiza 40% todo incluido: no lleva arancel (confirmado el 06/08/2026).
-    comitenteFce: { hastaDias: null, tasa: 40, gastos: 0 },
+    // El 40% de la FCE se descompone en 28 de tasa + 12 de arancel anual
+    // (boleto 348.884 de AdCap, 07/08/2026).
+    comitenteFce: { hastaDias: null, tasa: 28, gastos: 12 },
   },
   costos: COSTOS_POR_DEFECTO,
   prestamos_ph: 72,
@@ -106,9 +112,15 @@ const CLAVES = {
 // tasa. Si faltan se toman los valores por defecto.
 const CLAVES_COSTOS: Record<keyof CostosOperacion, string> = {
   iva: "iva",
+  iva_directo: "iva_directo",
   derechos_mercado: "derechos_mercado",
   impuesto_cheque: "impuesto_cheque",
+  arancel_minimo: "arancel_minimo",
 };
+
+// El piso del arancel es un importe en pesos, no un porcentaje: queda fuera del
+// rango de validación de las demás filas.
+const CLAVES_EN_PESOS = ["arancel_minimo"];
 
 // Los gastos son mucho menores que una TNA, así que tienen su propio rango.
 const GASTOS_MIN = 0;
@@ -140,7 +152,11 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
     const clave = String(servicioRaw).trim().toLowerCase();
     const valor = Number(String(tasaRaw).replace(",", "."));
     if (!Number.isFinite(valor)) continue;
-    const [min, max] = esGastos(clave) ? [GASTOS_MIN, GASTOS_MAX] : [TASA_MIN, TASA_MAX];
+    const [min, max] = CLAVES_EN_PESOS.includes(clave)
+      ? [0, Number.MAX_SAFE_INTEGER]
+      : esGastos(clave)
+        ? [GASTOS_MIN, GASTOS_MAX]
+        : [TASA_MIN, TASA_MAX];
     if (valor < min || valor > max) {
       logger.warn("tasas", `Valor fuera de rango para "${clave}" — ignorado`, {
         valor,
@@ -178,13 +194,12 @@ export function parseTasasRows(rows: unknown[][]): Tasas {
     comitente: CLAVES.comitente.map(tramo),
     comitenteFce: tramo(CLAVES.comitenteFce),
   };
-  const costos = {
-    iva: map.get(CLAVES_COSTOS.iva) ?? COSTOS_POR_DEFECTO.iva,
-    derechos_mercado:
-      map.get(CLAVES_COSTOS.derechos_mercado) ?? COSTOS_POR_DEFECTO.derechos_mercado,
-    impuesto_cheque:
-      map.get(CLAVES_COSTOS.impuesto_cheque) ?? COSTOS_POR_DEFECTO.impuesto_cheque,
-  };
+  const costos = Object.fromEntries(
+    (Object.keys(CLAVES_COSTOS) as (keyof CostosOperacion)[]).map((k) => [
+      k,
+      map.get(CLAVES_COSTOS[k]) ?? COSTOS_POR_DEFECTO[k],
+    ])
+  ) as CostosOperacion;
   const prestamos_ph = leer("prestamos_ph");
   const prestamos_pj = leer("prestamos_pj");
 

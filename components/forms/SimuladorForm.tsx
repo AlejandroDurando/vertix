@@ -73,6 +73,7 @@ export function SimuladorForm() {
   // se negocia ahí (sólo comitente). El echeq admite las dos vías.
   const soloDirecto = instrumentoSoloDirecto(instrumento);
   const soloComitente = instrumentoSoloComitente(instrumento);
+  const esFce = instrumento === "fce";
   const modalidadEfectiva: ModalidadCheque = soloDirecto
     ? "directo"
     : soloComitente
@@ -109,6 +110,7 @@ export function SimuladorForm() {
       const payload = {
         tipo,
         monto: Number(raw.monto),
+        ...(raw.monto_aceptado ? { monto_aceptado: Number(raw.monto_aceptado) } : {}),
         fecha_pago: String(raw.fecha_pago ?? ""),
         modalidad: String(raw.modalidad ?? ""),
         instrumento: String(raw.instrumento ?? ""),
@@ -158,7 +160,13 @@ export function SimuladorForm() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Input
             name="monto"
-            label={tipo === "cheques" ? "Monto del cheque (ARS)" : "Monto del préstamo (ARS)"}
+            label={
+              tipo === "prestamos"
+                ? "Monto del préstamo (ARS)"
+                : esFce
+                  ? "Valor total de la factura (ARS)"
+                  : "Monto del cheque (ARS)"
+            }
             type="number"
             inputMode="decimal"
             step="0.01"
@@ -168,6 +176,20 @@ export function SimuladorForm() {
           />
           {tipo === "cheques" ? (
             <>
+              {/* En la FCE se negocia sólo la parte que el comprador acepta. */}
+              {esFce && (
+                <Input
+                  name="monto_aceptado"
+                  label="Valor aceptado (ARS)"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="1"
+                  required
+                  hint="La parte de la factura que el comprador aceptó: es lo que se descuenta."
+                  error={fe("monto_aceptado")}
+                />
+              )}
               <Select
                 name="instrumento"
                 label="Instrumento"
@@ -337,6 +359,7 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
       <div className="divide-y divide-vertix/10">
         <Row label="Monto a recibir" value={ARS.format(data.monto_a_recibir)} />
         <Row label="Descuento total" value={ARS.format(data.descuento_total)} />
+        <Row label="Valor negociado" value={ARS.format(data.monto_negociado)} />
         <Row
           label="Modalidad"
           value={

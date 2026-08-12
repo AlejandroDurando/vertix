@@ -149,23 +149,25 @@ console.log(c.bold("Descuento de cheques - cuenta comitente:"));
 for (const [etiqueta, clave] of [["hasta 30 dias", "comitente_hasta_30"], ["de 31 a 60 dias", "comitente_31_60"], ["61 dias o mas", "comitente_desde_61"]]) {
   console.log(c.dim(`  ${etiqueta.padEnd(18)} -> `) + c.yellow(`${v(clave)}%`) + c.dim(` + ${v("arancel_comitente")}% arancel = ${total(clave, "arancel_comitente")}`));
 }
-// La FCE tiene su propia fila de gastos (hoy en 0: el 40% es total). Si la fila
-// no esta cargada, se asume 0, igual que en lib/tasas.ts.
+// La FCE tiene su propia fila de arancel (28 + 12 = 40% total, segun el boleto
+// de AdCap). Si la fila no esta cargada, se asume 0, igual que en lib/tasas.ts.
 const gastosFce = map.get("gastos_comitente_fce") ?? 0;
-console.log(c.dim(`  ${"FCE (estimado)".padEnd(18)} -> `) + c.yellow(`${v("comitente_fce")}%`) + c.dim(` + ${gastosFce}% gastos = ${Number((v("comitente_fce") + gastosFce).toFixed(2))}% total`));
+console.log(c.dim(`  ${"FCE (sin IVA)".padEnd(18)} -> `) + c.yellow(`${v("comitente_fce")}%`) + c.dim(` + ${gastosFce}% arancel = ${Number((v("comitente_fce") + gastosFce).toFixed(2))}% total`));
 console.log("");
 // Costos que se le cobran al vendedor ademas de la tasa. Filas opcionales: si
 // faltan, lib/tasas.ts usa estos mismos valores por defecto.
 console.log(c.bold("Costos del vendedor (filas opcionales):"));
-for (const [etiqueta, clave, def] of [
-  ["IVA", "iva", 21],
-  ["derechos de mercado", "derechos_mercado", 0.06],
-  ["impuesto al cheque", "impuesto_cheque", 1.2],
+for (const [etiqueta, clave, def, unidad] of [
+  ["IVA", "iva", 21, "%"],
+  ["IVA fuera del mercado", "iva_directo", 21, "%"],
+  ["derechos de mercado", "derechos_mercado", 0.06, "%"],
+  ["impuesto al cheque", "impuesto_cheque", 1.2, "%"],
+  ["arancel minimo", "arancel_minimo", 500, " $"],
 ]) {
   const valor = map.get(clave);
   console.log(
-    c.dim(`  ${etiqueta.padEnd(18)} -> `) +
-      c.yellow(`${valor ?? def}%`) +
+    c.dim(`  ${etiqueta.padEnd(22)} -> `) +
+      c.yellow(unidad === "%" ? `${valor ?? def}%` : `$ ${valor ?? def}`) +
       c.dim(valor == null ? " (por defecto, falta la fila)" : "")
   );
 }

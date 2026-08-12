@@ -179,6 +179,9 @@ export const simuladorChequesSchema = z
   .object({
     tipo: z.literal("cheques"),
     monto: montoSchema,
+    // Sólo FCE: la parte de la factura que el comprador aceptó, que es lo que
+    // se negocia. Obligatorio para FCE (ver superRefine).
+    monto_aceptado: montoSchema.optional(),
     fecha_pago: fechaSchema,
     modalidad: z.enum(["directo", "comitente"]),
     instrumento: z.enum(["cheque", "echeq", "fce"]),
@@ -214,6 +217,23 @@ export const simuladorChequesSchema = z
         message: MSG_FCE_SOLO_COMITENTE,
       });
       return;
+    }
+
+    // En la FCE se negocia lo que el comprador aceptó, no el total facturado.
+    if (data.instrumento === "fce") {
+      if (data.monto_aceptado == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monto_aceptado"],
+          message: "Indicá el valor aceptado de la FCE.",
+        });
+      } else if (data.monto_aceptado > data.monto) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monto_aceptado"],
+          message: "El valor aceptado no puede superar el total de la factura.",
+        });
+      }
     }
 
     if (

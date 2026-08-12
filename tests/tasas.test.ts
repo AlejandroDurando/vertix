@@ -76,8 +76,10 @@ describe("parseTasasRows", () => {
   it("toma los costos por defecto si la hoja no los trae", () => {
     expect(parseTasasRows(FILAS).costos).toEqual({
       iva: 21,
+      iva_directo: 21,
       derechos_mercado: 0.06,
       impuesto_cheque: 1.2,
+      arancel_minimo: 500,
     });
   });
 
@@ -85,10 +87,26 @@ describe("parseTasasRows", () => {
     const t = parseTasasRows([
       ...FILAS,
       ["iva", "10,5"],
+      ["iva_directo", "0"],
       ["derechos_mercado", "0,08"],
       ["impuesto_cheque", "0,6"],
+      ["arancel_minimo", "1200"],
     ]);
-    expect(t.costos).toEqual({ iva: 10.5, derechos_mercado: 0.08, impuesto_cheque: 0.6 });
+    expect(t.costos).toEqual({
+      iva: 10.5,
+      iva_directo: 0,
+      derechos_mercado: 0.08,
+      impuesto_cheque: 0.6,
+      arancel_minimo: 1200,
+    });
+  });
+
+  // El mínimo del arancel son pesos, no un porcentaje: no le aplica el rango
+  // que descarta los valores absurdos de las demás filas.
+  it("acepta un mínimo de arancel de varios miles de pesos", () => {
+    expect(parseTasasRows([...FILAS, ["arancel_minimo", "5000"]]).costos.arancel_minimo).toBe(
+      5000
+    );
   });
 });
 

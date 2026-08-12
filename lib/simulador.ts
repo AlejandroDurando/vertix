@@ -1,6 +1,7 @@
 import type {
   CondicionIva,
   CostoSimulador,
+  InstrumentoCheque,
   ModalidadCheque,
   SimuladorChequesInput,
   SimuladorChequesOutput,
@@ -40,11 +41,31 @@ const DISCLAIMER_CHEQUES =
   "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. El desglose incluye el arancel de Vertix y los derechos e impuestos que se le cobran al vendedor según la modalidad. La tasa puede variar.";
 
 /**
- * Un cheque se acredita 2 días hábiles después de su fecha de pago si ésta es
- * un día hábil, y 3 días hábiles después si cae en fin de semana o feriado.
+ * Cuándo se cobra el valor.
+ *
+ * El cheque y el echeq se acreditan 2 días hábiles después de la fecha de pago
+ * (3 si cae en fin de semana o feriado), verificado contra la planilla de
+ * cotización. La **FCE cobra a +1 día hábil**, confirmado con un boleto real de
+ * AdCap el 07/08/2026: vencimiento 14/09 (lunes) → cobro 15/09.
  */
-export function fechaAcreditacionEstimada(fechaPago: Date): Date {
-  return sumarDiasHabiles(fechaPago, esDiaHabil(fechaPago) ? 2 : 3);
+export function fechaAcreditacionEstimada(
+  fechaPago: Date,
+  instrumento: InstrumentoCheque = "cheque"
+): Date {
+  const habiles = instrumento === "fce" ? 1 : 2;
+  return sumarDiasHabiles(fechaPago, esDiaHabil(fechaPago) ? habiles : habiles + 1);
+}
+
+/**
+ * Desde cuándo corren los intereses.
+ *
+ * La FCE se liquida a 24hs: el vendedor cobra el día hábil siguiente al de la
+ * operación, así que el plazo arranca ahí (boleto 348.884: concertación 10/08,
+ * liquidación 11/08, cobro 15/09 = 35 días). El cheque descuenta desde el día
+ * de la venta, como en la planilla de cotización.
+ */
+function fechaDesde(ahora: Date, instrumento: InstrumentoCheque): Date {
+  return instrumento === "fce" ? sumarDiasHabiles(ahora, 1) : ahora;
 }
 
 const DISCLAIMER_PRESTAMOS =
@@ -64,9 +85,11 @@ const pct = (n: number) => `${String(n).replace(".", ",")}%`;
  * en cambio, sí se calcula sobre el nominal y prorrateado por días.
  *
  * En el mercado de capitales se suman el IVA del arancel, los derechos de
- * mercado con su IVA y la percepción de IVA sobre el interés. Fuera del
- * mercado no se cobra nada de eso, pero sí el impuesto al cheque cuando el
- * plazo es corto.
+ * mercado con su IVA y la percepción de IVA sobre el interés. **La FCE es la
+ * excepción**: paga derechos pero no lleva IVA ni percepción (confirmado por
+ * AdCap y verificado contra el boleto 348.884 el 07/08/2026). Fuera del
+ * mercado no hay derechos ni percepción, pero sí IVA sobre los gastos y el
+ * impuesto al cheque cuando el plazo es corto.
  */
 function calcularCostos(opts: {
   monto: number;
@@ -75,15 +98,26 @@ function calcularCostos(opts: {
   tnaInteres: number;
   arancelPct: number;
   modalidad: ModalidadCheque;
+  instrumento: InstrumentoCheque;
   condicionComprador: CondicionIva;
   tasas: Tasas;
 }): { costos: CostoSimulador[]; incluyePercepcion: boolean } {
-  const { monto, dias, tnaInteres, arancelPct, modalidad, tasas } = opts;
-  const { iva, derechos_mercado, impuesto_cheque } = tasas.costos;
+  const { monto, dias, tnaInteres, arancelPct, modalidad, instrumento, tasas } = opts;
+  const { iva, iva_directo, derechos_mercado, impuesto_cheque, arancel_minimo } =
+    tasas.costos;
+
+  const esFce = instrumento === "fce";
+  // La FCE no tributa IVA en aranceles ni en derechos.
+  const ivaAplicable = esFce ? 0 : modalidad === "comitente" ? iva : iva_directo;
 
   const interes = monto - monto / (1 + (tnaInteres / 100) * (dias / DIAS_ANIO));
   const bruto = monto - interes;
-  const arancel = monto * (arancelPct / 100) * (dias / DIAS_ANIO);
+
+  // Piso del arancel: si el cálculo da menos, la ALyC cobra el mínimo igual.
+  // Sólo aplica si hay arancel; un tramo sin arancel no pasa a cobrarlo.
+  const arancelCalculado = monto * (arancelPct / 100) * (dias / DIAS_ANIO);
+  const arancel =
+    arancelPct > 0 ? Math.max(arancelCalculado, arancel_minimo) : 0;
 
   const costos: CostoSimulador[] = [
     {
@@ -92,9 +126,17 @@ function calcularCostos(opts: {
       detalle: `${pct(tnaInteres)} TNA por ${dias} días`,
     },
     {
-      concepto: "Arancel Vertix",
+      concepto: "Arancel",
       monto: arancel,
-      detalle: `${pct(arancelPct)} anual por ${dias} días`,
+      detalle:
+        arancel > arancelCalculado
+          ? `mínimo de ${arancel_minimo.toLocaleString("es-AR")} (el ${pct(arancelPct)} anual daba menos)`
+          : `${pct(arancelPct)} anual por ${dias} días`,
+    },
+    {
+      concepto: "IVA sobre el arancel",
+      monto: arancel * (ivaAplicable / 100),
+      detalle: pct(ivaAplicable),
     },
   ];
 
@@ -104,7 +146,6 @@ function calcularCostos(opts: {
     const derechos = bruto * (derechos_mercado / 100) * proporcion;
 
     costos.push(
-      { concepto: "IVA sobre el arancel", monto: arancel * (iva / 100), detalle: pct(iva) },
       {
         concepto: "Derechos de mercado",
         monto: derechos,
@@ -113,10 +154,14 @@ function calcularCostos(opts: {
             ? `${pct(derechos_mercado)} prorrateado a ${DIAS_DERECHOS} días`
             : pct(derechos_mercado),
       },
-      { concepto: "IVA sobre los derechos", monto: derechos * (iva / 100), detalle: pct(iva) }
+      {
+        concepto: "IVA sobre los derechos",
+        monto: derechos * (ivaAplicable / 100),
+        detalle: pct(ivaAplicable),
+      }
     );
 
-    if (opts.condicionComprador === "ri") {
+    if (!esFce && opts.condicionComprador === "ri") {
       costos.push({
         concepto: "Percepción de IVA",
         monto: interes * (iva / 100),
@@ -132,10 +177,10 @@ function calcularCostos(opts: {
   }
 
   return {
-    // El interés siempre se muestra; el resto sólo si tiene importe (la FCE,
-    // por ejemplo, cotiza sin arancel).
+    // El interés siempre se muestra; el resto sólo si tiene importe.
     costos: costos.filter((c, i) => i === 0 || c.monto > 0),
-    incluyePercepcion: modalidad === "comitente" && opts.condicionComprador === "ri",
+    incluyePercepcion:
+      modalidad === "comitente" && !esFce && opts.condicionComprador === "ri",
   };
 }
 
@@ -146,11 +191,19 @@ export function simularCheques(
 ): SimuladorChequesOutput {
   const fechaPago = parseISODate(input.fecha_pago);
 
+  // En la FCE se negocia la parte que el comprador aceptó, no el total de la
+  // factura: es lo que figura como valor nominal en el boleto.
+  const monto =
+    input.instrumento === "fce" && input.monto_aceptado
+      ? input.monto_aceptado
+      : input.monto;
+
   // El descuento corre hasta la fecha estimada de acreditación del comprador
   // (confirmado por el cliente el 31/07/2026), y ese mismo plazo define el
   // tramo de tasa que se aplica.
-  const fechaAcreditacion = fechaAcreditacionEstimada(fechaPago);
-  const dias = Math.max(1, diasCalendarioEntre(ahora, fechaAcreditacion));
+  const fechaAcreditacion = fechaAcreditacionEstimada(fechaPago, input.instrumento);
+  const desde = fechaDesde(ahora, input.instrumento);
+  const dias = Math.max(1, diasCalendarioEntre(desde, fechaAcreditacion));
 
   const tramo = tramoParaOperacion(tasas, {
     modalidad: input.modalidad,
@@ -169,24 +222,26 @@ export function simularCheques(
       : tasas.cheques.directo;
 
   const { costos, incluyePercepcion } = calcularCostos({
-    monto: input.monto,
+    monto,
     dias,
     diasHabilesAlPago: diasHabilesEntre(ahora, fechaPago),
     tnaInteres,
     arancelPct,
     modalidad: input.modalidad,
+    instrumento: input.instrumento,
     condicionComprador: input.condicion_comprador ?? "ri",
     tasas,
   });
 
   const descuento = costos.reduce((total, c) => total + c.monto, 0);
-  const monto_a_recibir = input.monto - descuento;
+  const monto_a_recibir = monto - descuento;
 
   return {
+    monto_negociado: round2(monto),
     monto_a_recibir: round2(monto_a_recibir),
     descuento_total: round2(descuento),
     costos: costos.map((c) => ({ ...c, monto: round2(c.monto) })),
-    costo_total_pct: round2((descuento / input.monto) * 100),
+    costo_total_pct: round2((descuento / monto) * 100),
     tna_aplicada: round2(tna),
     tna_interes: tnaInteres,
     arancel: arancelPct,

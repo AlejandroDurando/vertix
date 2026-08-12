@@ -92,7 +92,30 @@ describe("simulador de cheques — instrumento y modalidad", () => {
 
   it("acepta echeq y FCE con cuenta comitente", () => {
     expect(simulador({ instrumento: "echeq", modalidad: "comitente" }).success).toBe(true);
-    expect(simulador({ instrumento: "fce", modalidad: "comitente" }).success).toBe(true);
+    expect(
+      simulador({ instrumento: "fce", modalidad: "comitente", monto_aceptado: 80000 })
+        .success
+    ).toBe(true);
+  });
+
+  // En la FCE se negocia lo que el comprador aceptó, no el total facturado.
+  it("exige el valor aceptado en la FCE", () => {
+    const res = simulador({ instrumento: "fce", modalidad: "comitente" });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["monto_aceptado"]);
+    }
+  });
+
+  it("rechaza un valor aceptado mayor al total de la factura", () => {
+    expect(
+      simulador({
+        instrumento: "fce",
+        modalidad: "comitente",
+        monto: 100000,
+        monto_aceptado: 120000,
+      }).success
+    ).toBe(false);
   });
 
   // La FCE es lo inverso al cheque físico: sólo se negocia en el mercado.

@@ -127,13 +127,14 @@ ignoran valores fuera del rango 5–300% (protege contra el formato viejo y erro
 **Tasa de cheques = tasa de descuento + gastos, por modalidad y por tramo de plazo** (confirmado el
 31/07/2026). Directo con Vertix: ≤45 días 48% + 2%, ≥46 días 72% + 3,5%. Comitente: ≤30 días 40%,
 31–60 43%, ≥61 45%, siempre + 2,5% de arancel. La FCE en comitente no tiene tramos (su tasa depende
-del pagador de la factura) y **cotiza 40% todo incluido, sin arancel** (corregido el 06/08/2026):
-tiene su propia fila `gastos_comitente_fce`, la única **opcional** de la hoja — si falta se toman 0
-gastos en vez de invalidar la lectura entera, y con gastos en 0 el simulador no muestra esa línea.
-Cada tramo son **dos filas en la hoja**
-(tasa y gastos) para poder ajustar una sin la otra; `tramoParaOperacion()` en `lib/tasas.ts` elige
-cuál aplica. Los costos del vendedor (`iva` 21, `derechos_mercado` 0,06, `impuesto_cheque` 1,2) son
-tres filas más, también **opcionales**: si faltan se usan esos mismos valores por defecto. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
+del pagador de la factura) y su 40% se descompone en **28% de tasa + 12% de arancel anual**
+(verificado contra el boleto 348.884 de AdCap el 07/08/2026). Cada tramo son **dos filas en la
+hoja** (tasa y gastos) para poder ajustar una sin la otra; `tramoParaOperacion()` en `lib/tasas.ts`
+elige cuál aplica. Los costos del vendedor (`iva` 21, `iva_directo` 21, `derechos_mercado` 0,06,
+`impuesto_cheque` 1,2, `arancel_minimo` 500) son cinco filas más, **opcionales**: si faltan se usan
+esos mismos valores por defecto. `gastos_comitente_fce` también es opcional. **El cache de la hoja
+es de 1 minuto** (era de 1 hora hasta el 07/08/2026): los dueños ajustan tasas varias veces por
+semana y necesitan verlo enseguida. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
 la acreditación del comprador. El resultado desglosa tasa, gastos, total y el tramo aplicado.
 
 **Préstamos cotizan un rango, no un valor.** La tasa depende del solicitante y del mercado
@@ -162,22 +163,48 @@ físico no entra al mercado, la FCE sólo se negocia ahí). Viven en `lib/valida
 los forms para el `min` del input date y para achicar el select, así front y back nunca se
 desincronizan. Las etiquetas salen de `MODALIDAD_OPCIONES`, también compartidas.
 
-**El descuento corre hasta la fecha estimada de acreditación** (+2 días hábiles si la fecha de pago
-es hábil, +3 si cae finde/feriado), no hasta la fecha de pago, porque es cuando el vendedor cobra
-de verdad. **Confirmado el 07/08/2026** contra la planilla de cotización real: sus tres filas
-cargadas usan exactamente esas fechas de cobro.
+**El descuento corre hasta la fecha estimada de acreditación**, no hasta la fecha de pago, porque
+es cuando el vendedor cobra de verdad. El plazo depende del instrumento:
+
+| | desde | hasta |
+|---|---|---|
+| cheque / echeq | el día de la operación | fecha de pago **+2 días hábiles** (+3 si cae finde/feriado) |
+| FCE | la **liquidación**, a 1 día hábil | fecha de pago **+1 día hábil** (+2 si cae finde/feriado) |
+
+Lo del cheque está confirmado contra la planilla de cotización (sus tres filas usan esas fechas);
+lo de la FCE, contra el boleto 348.884 de AdCap: concertación 10/08, liquidación 11/08, vencimiento
+14/09 (lunes), cobro 15/09 = **35 días**. ⚠️ Falta confirmar si el cheque también debería contar
+desde la liquidación; hoy no lo hace porque la planilla dice que no.
 
 **El interés es un descuento racional, no simple** (alineado con la planilla el 07/08/2026):
 `V − V/(1 + i·d/365)`, no `V·i·d/365`. El arancel de Vertix, en cambio, **sí** se calcula sobre el
 nominal y prorrateado por días, y ya no se suma a la tasa: es una línea aparte del desglose. El
 `tna_aplicada` (tasa + gastos) se sigue informando como referencia, pero no es lo que se cobra.
 
-**El simulador desglosa todo lo que se le cobra al vendedor**, en pesos, replicando la planilla
-`compra CPD PESOS`. Con cuenta comitente: interés, arancel, IVA del arancel, derechos de mercado
-(prorrateados sobre 90 días, sobre el valor presente), IVA de los derechos y percepción de IVA
-(21% del interés). Fuera del mercado no se cobra nada de eso, pero sí el **impuesto al cheque**
-(1,2% del nominal) cuando la fecha de pago está a menos de 10 días hábiles: con tan pocos días el
-interés no llega a cubrirlo. Más allá de ese plazo queda absorbido por la tasa.
+**El simulador desglosa todo lo que se le cobra al vendedor**, en pesos. Qué se cobra depende de la
+modalidad y del instrumento:
+
+| Concepto | comitente (cheque/echeq) | comitente (FCE) | directo |
+|---|---|---|---|
+| Interés (descuento racional) | sí | sí | sí |
+| Arancel (% anual sobre el nominal) | sí | sí | sí |
+| IVA del arancel | sí (`iva`) | **no** | sí (`iva_directo`) |
+| Derechos de mercado (0,06% prorrateado a 90 días, sobre el valor presente) | sí | **sí** | no |
+| IVA de los derechos | sí | **no** | — |
+| Percepción de IVA (21% del interés) | sí, si el comprador es RI | **no** | no |
+| Impuesto al cheque (1,2% del nominal) | no | no | sí, si faltan <10 días hábiles |
+
+La FCE no tributa IVA ni percepción en ningún concepto (confirmado por AdCap el 07/08/2026 y
+verificado contra el boleto). El impuesto al cheque se cobra sólo en plazos cortos porque el
+interés de tan pocos días no llega a cubrirlo; más allá queda absorbido por la tasa. El
+**`arancel_minimo`** (500) es un piso en pesos que cobra la ALyC si el cálculo da menos, y sólo
+aplica cuando el tramo tiene arancel. `iva_directo` está pendiente de confirmación de Martín: si
+dice que no se cobra, se pone en 0 en la hoja sin tocar código.
+
+**En la FCE se negocia el valor aceptado, no el total facturado.** El simulador pide los dos
+importes (`monto` = total de la factura, `monto_aceptado` = lo que aceptó el comprador; en el
+ejemplo del cliente, el 80%) y cotiza sobre el aceptado, que es lo que figura como nominal en el
+boleto. `monto_negociado` en la respuesta dice cuál se usó.
 
 **La percepción de IVA se cotiza siempre en el simulador público.** Depende de la condición del
 **comprador**, que lo consigue Vertix y no se conoce al simular, así que se muestra el peor caso
@@ -234,7 +261,9 @@ verificación). Borrarlas cuando ya no sirvan.
    `v=spf1 include:spf.hostmar.com include:_spf.google.com include:spf.protection.outlook.com -all`.
    Hay que **editar ese registro** agregando el include de Resend, nunca crear un TXT nuevo: dos
    registros SPF en el mismo dominio invalidan la verificación y hacen rebotar todo el correo.
-4. **Feriados hardcodeados** en `lib/fechas.ts`: 2026 completo, 2027 parcial. Mantenimiento anual.
+4. **Feriados hardcodeados** en `lib/fechas.ts`: 2026 y 2027 completos, con los trasladables ya
+   corridos según la Ley 27.399. Faltan los **días no laborables con fines turísticos** de 2027
+   (se decretan año a año y todavía no salieron) y todo 2028. Mantenimiento anual.
 5. **Rate limiting en memoria**: por instancia de lambda, se resetea en cold start. Best-effort, no
    es protección real. La IP de `x-forwarded-for` es spoofeable.
 6. **MIME de archivos** según lo declara el cliente, sin verificar magic bytes (aceptable hoy).
