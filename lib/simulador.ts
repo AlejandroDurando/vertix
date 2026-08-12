@@ -22,7 +22,13 @@ import {
 } from "./fechas";
 
 // Las tasas de la hoja se interpretan como TNA (Tasa Nominal Anual) en %.
+//
+// El mercado de capitales calcula sobre 365 días; fuera del mercado se cotiza
+// con tasa mensual sobre meses de 30 días, que es lo mismo que anualizar sobre
+// 360 (48% anual = 4% mensual; 4% × 42/30 = 48% × 42/360). Verificado contra la
+// planilla de descuento directo el 12/08/2026.
 const DIAS_ANIO = 365;
+const DIAS_ANIO_DIRECTO = 360;
 
 // Los derechos de mercado se prorratean sobre 90 días: por encima se cobran
 // enteros (fórmula de la planilla de cotización).
@@ -87,9 +93,9 @@ const pct = (n: number) => `${String(n).replace(".", ",")}%`;
  * En el mercado de capitales se suman el IVA del arancel, los derechos de
  * mercado con su IVA y la percepción de IVA sobre el interés. **La FCE es la
  * excepción**: paga derechos pero no lleva IVA ni percepción (confirmado por
- * AdCap y verificado contra el boleto 348.884 el 07/08/2026). Fuera del
- * mercado no hay derechos ni percepción, pero sí IVA sobre los gastos y el
- * impuesto al cheque cuando el plazo es corto.
+ * AdCap y verificado contra el boleto 348.884 el 07/08/2026).
+ *
+ * Fuera del mercado el esquema es otro y se calcula en `costosDirecto()`.
  */
 function calcularCostos(opts: {
   monto: number;
@@ -103,12 +109,15 @@ function calcularCostos(opts: {
   tasas: Tasas;
 }): { costos: CostoSimulador[]; incluyePercepcion: boolean } {
   const { monto, dias, tnaInteres, arancelPct, modalidad, instrumento, tasas } = opts;
-  const { iva, iva_directo, derechos_mercado, impuesto_cheque, arancel_minimo } =
-    tasas.costos;
+  const { iva, derechos_mercado, arancel_minimo } = tasas.costos;
+
+  if (modalidad === "directo") {
+    return { costos: costosDirecto(opts), incluyePercepcion: false };
+  }
 
   const esFce = instrumento === "fce";
   // La FCE no tributa IVA en aranceles ni en derechos.
-  const ivaAplicable = esFce ? 0 : modalidad === "comitente" ? iva : iva_directo;
+  const ivaAplicable = esFce ? 0 : iva;
 
   const interes = monto - monto / (1 + (tnaInteres / 100) * (dias / DIAS_ANIO));
   const bruto = monto - interes;
@@ -140,35 +149,91 @@ function calcularCostos(opts: {
     },
   ];
 
-  if (modalidad === "comitente") {
-    // Los derechos se prorratean hasta los 90 días; por encima se cobran enteros.
-    const proporcion = Math.min(dias / DIAS_DERECHOS, 1);
-    const derechos = bruto * (derechos_mercado / 100) * proporcion;
+  // Los derechos se prorratean hasta los 90 días; por encima se cobran enteros.
+  const proporcion = Math.min(dias / DIAS_DERECHOS, 1);
+  const derechos = bruto * (derechos_mercado / 100) * proporcion;
 
-    costos.push(
-      {
-        concepto: "Derechos de mercado",
-        monto: derechos,
-        detalle:
-          dias < DIAS_DERECHOS
-            ? `${pct(derechos_mercado)} prorrateado a ${DIAS_DERECHOS} días`
-            : pct(derechos_mercado),
-      },
-      {
-        concepto: "IVA sobre los derechos",
-        monto: derechos * (ivaAplicable / 100),
-        detalle: pct(ivaAplicable),
-      }
-    );
-
-    if (!esFce && opts.condicionComprador === "ri") {
-      costos.push({
-        concepto: "Percepción de IVA",
-        monto: interes * (iva / 100),
-        detalle: `${pct(iva)} del interés — no se cobra si el comprador es monotributista o consumidor final`,
-      });
+  costos.push(
+    {
+      concepto: "Derechos de mercado",
+      monto: derechos,
+      detalle:
+        dias < DIAS_DERECHOS
+          ? `${pct(derechos_mercado)} prorrateado a ${DIAS_DERECHOS} días`
+          : pct(derechos_mercado),
+    },
+    {
+      concepto: "IVA sobre los derechos",
+      monto: derechos * (ivaAplicable / 100),
+      detalle: pct(ivaAplicable),
     }
-  } else if (opts.diasHabilesAlPago < DIAS_HABILES_IMPUESTO_CHEQUE) {
+  );
+
+  if (!esFce && opts.condicionComprador === "ri") {
+    costos.push({
+      concepto: "Percepción de IVA",
+      monto: interes * (iva / 100),
+      detalle: `${pct(iva)} del interés — no se cobra si el comprador es monotributista o consumidor final`,
+    });
+  }
+
+  return {
+    // El interés siempre se muestra; el resto sólo si tiene importe.
+    costos: costos.filter((c, i) => i === 0 || c.monto > 0),
+    incluyePercepcion: !esFce && opts.condicionComprador === "ri",
+  };
+}
+
+/**
+ * Descuento fuera del mercado de capitales, replicando la planilla de
+ * cotización directa (verificada al peso el 12/08/2026).
+ *
+ * Acá el criterio es otro que en el mercado: el interés es un **descuento
+ * simple** con tasa mensual sobre meses de 30 días, los gastos bancarios son un
+ * **porcentaje fijo del capital** (no se prorratean por plazo), se suman
+ * Ingresos Brutos sobre el interés, y el IVA grava el interés, los gastos y los
+ * Ingresos Brutos, no sólo la comisión.
+ */
+function costosDirecto(opts: {
+  monto: number;
+  dias: number;
+  diasHabilesAlPago: number;
+  tnaInteres: number;
+  arancelPct: number;
+  tasas: Tasas;
+}): CostoSimulador[] {
+  const { monto, dias, tnaInteres, arancelPct, tasas } = opts;
+  const { iva_directo, ingresos_brutos, impuesto_cheque } = tasas.costos;
+
+  const interes = monto * (tnaInteres / 100) * (dias / DIAS_ANIO_DIRECTO);
+  const gastos = monto * (arancelPct / 100);
+  const iibb = interes * (ingresos_brutos / 100);
+  const iva = (interes + gastos + iibb) * (iva_directo / 100);
+
+  const costos: CostoSimulador[] = [
+    {
+      concepto: "Interés",
+      monto: interes,
+      detalle: `${pct(round2(tnaInteres / 12))} mensual por ${dias} días`,
+    },
+    {
+      concepto: "Gastos bancarios",
+      monto: gastos,
+      detalle: `${pct(arancelPct)} del capital`,
+    },
+    {
+      concepto: "Ingresos Brutos",
+      monto: iibb,
+      detalle: `${pct(ingresos_brutos)} del interés`,
+    },
+    {
+      concepto: "IVA",
+      monto: iva,
+      detalle: `${pct(iva_directo)} sobre interés, gastos e Ingresos Brutos`,
+    },
+  ];
+
+  if (opts.diasHabilesAlPago < DIAS_HABILES_IMPUESTO_CHEQUE) {
     costos.push({
       concepto: "Impuesto al cheque",
       monto: monto * (impuesto_cheque / 100),
@@ -176,12 +241,7 @@ function calcularCostos(opts: {
     });
   }
 
-  return {
-    // El interés siempre se muestra; el resto sólo si tiene importe.
-    costos: costos.filter((c, i) => i === 0 || c.monto > 0),
-    incluyePercepcion:
-      modalidad === "comitente" && !esFce && opts.condicionComprador === "ri",
-  };
+  return costos.filter((c, i) => i === 0 || c.monto > 0);
 }
 
 export function simularCheques(
@@ -212,7 +272,11 @@ export function simularCheques(
   });
   const tnaInteres = tramo.tasa;
   const arancelPct = tramo.gastos;
-  const tna = tnaInteres + arancelPct; // TNA total que paga el vendedor
+  // En el mercado el arancel es una tasa anual y se puede sumar a la del
+  // descuento. Fuera del mercado es una comisión fija sobre el capital, así que
+  // sumarla daría un número sin sentido: ahí la TNA es sólo la del interés.
+  const tna =
+    input.modalidad === "comitente" ? tnaInteres + arancelPct : tnaInteres;
 
   const listaTramos =
     input.modalidad === "comitente"

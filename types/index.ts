@@ -64,6 +64,8 @@ export type CostosOperacion = {
   iva_directo: number;
   /** Derechos de mercado del vendedor, prorrateados sobre 90 días. */
   derechos_mercado: number;
+  /** Ingresos Brutos sobre el interés, sólo fuera del mercado de capitales. */
+  ingresos_brutos: number;
   /** Impuesto al cheque, sobre el valor nominal (sólo fuera del mercado). */
   impuesto_cheque: number;
   /** Piso del arancel en pesos: AdCap cobra este mínimo si el cálculo da menos. */

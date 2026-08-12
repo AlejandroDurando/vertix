@@ -26,6 +26,7 @@ const TASAS: Tasas = {
     iva: 21,
     iva_directo: 21,
     derechos_mercado: 0.06,
+    ingresos_brutos: 9,
     impuesto_cheque: 1.2,
     arancel_minimo: 500,
   },
@@ -73,39 +74,40 @@ describe("simularCheques", () => {
     // El vendedor cobra el día de la operación, no cuando se acredita el comprador.
     expect(r.fecha_acreditacion_vendedor).toBe("2026-01-05");
     expect(r.dias_considerados).toBe(9);
-    expect(r.tna_aplicada).toBe(50);
+    // Fuera del mercado el arancel es fijo, así que no se suma a la tasa.
+    expect(r.tna_aplicada).toBe(48);
   });
 
-  // Descuento racional, como la planilla de cotización: se despeja el valor
-  // presente en vez de aplicar la tasa sobre el nominal.
-  it("el interés es el descuento racional sobre el nominal", () => {
+  // Fuera del mercado el interés es descuento simple con base 360 (4% mensual),
+  // no el racional del mercado de capitales.
+  it("el interés directo es descuento simple sobre meses de 30 días", () => {
     const r = simularCheques(input, TASAS, ahora);
-    const esperado = 1_000_000 - 1_000_000 / (1 + 0.48 * (9 / 365));
-    expect(costo(r, "Interés")).toBeCloseTo(esperado, 2);
-    // El descuento simple viejo daba 11.835,62: siempre cobra de más.
-    expect(costo(r, "Interés")).toBeLessThan(1_000_000 * 0.48 * (9 / 365));
+    expect(costo(r, "Interés")).toBeCloseTo(1_000_000 * 0.48 * (9 / 360), 2);
   });
 
-  // 1.000.000 × 2% × 9/365 = 493,15, por debajo del piso de 500 que cobra la ALyC.
-  it("aplica el mínimo de arancel cuando el cálculo da menos", () => {
+  it("los gastos bancarios son un porcentaje fijo del capital", () => {
     const r = simularCheques(input, TASAS, ahora);
-    expect(costo(r, "Arancel")).toBe(500);
+    // 2% de 1.000.000, sin prorratear por los 9 días.
+    expect(costo(r, "Gastos bancarios")).toBe(20_000);
     expect(r.tna_interes).toBe(48);
     expect(r.arancel).toBe(2);
     expect(r.tramo).toBe("hasta 45 días");
   });
 
-  it("el arancel se calcula sobre el nominal y prorrateado por días", () => {
-    const r = simularCheques({ ...input, monto: 10_000_000 }, TASAS, ahora);
-    expect(costo(r, "Arancel")).toBeCloseTo(10_000_000 * 0.02 * (9 / 365), 2);
+  it("suma Ingresos Brutos e IVA sobre la base ampliada", () => {
+    const r = simularCheques(input, TASAS, ahora);
+    const interes = costo(r, "Interés");
+    const gastos = costo(r, "Gastos bancarios");
+    const iibb = costo(r, "Ingresos Brutos");
+    expect(iibb).toBeCloseTo(interes * 0.09, 2);
+    expect(costo(r, "IVA")).toBeCloseTo((interes + gastos + iibb) * 0.21, 2);
   });
 
   it("suma el impuesto al cheque si vence en menos de 10 días hábiles", () => {
     const r = simularCheques(input, TASAS, ahora);
     expect(costo(r, "Impuesto al cheque")).toBe(12_000);
-    // interés 11.697,17 + arancel 500 + IVA 105 + impuesto 12.000
-    expect(r.descuento_total).toBeCloseTo(24_302.17, 2);
-    expect(r.monto_a_recibir).toBeCloseTo(975_697.83, 2);
+    expect(r.descuento_total).toBeCloseTo(52_026.8, 2);
+    expect(r.monto_a_recibir).toBeCloseTo(947_973.2, 2);
   });
 
   it("no cobra el impuesto al cheque cuando el plazo lo absorbe", () => {
@@ -113,11 +115,8 @@ describe("simularCheques", () => {
     expect(costo(r, "Impuesto al cheque")).toBe(0);
   });
 
-  // Fuera del mercado de capitales no hay derechos ni percepción, pero el
-  // arancel sí tributa IVA.
-  it("directo cobra IVA del arancel pero no derechos ni percepción", () => {
+  it("directo no cobra derechos de mercado ni percepción", () => {
     const r = simularCheques(input, TASAS, ahora);
-    expect(costo(r, "IVA sobre el arancel")).toBeCloseTo(500 * 0.21, 2);
     expect(costo(r, "Derechos de mercado")).toBe(0);
     expect(costo(r, "Percepción de IVA")).toBe(0);
     expect(r.incluye_percepcion).toBe(false);
@@ -126,7 +125,31 @@ describe("simularCheques", () => {
   it("el IVA de directo se puede apagar desde la hoja", () => {
     const sinIva: Tasas = { ...TASAS, costos: { ...TASAS.costos, iva_directo: 0 } };
     const r = simularCheques(input, sinIva, ahora);
-    expect(costo(r, "IVA sobre el arancel")).toBe(0);
+    expect(costo(r, "IVA")).toBe(0);
+  });
+
+  // Descuento racional, como la planilla del mercado: se despeja el valor
+  // presente en vez de aplicar la tasa sobre el nominal.
+  it("el interés en el mercado es el descuento racional", () => {
+    const r = simularCheques(
+      { ...input, modalidad: "comitente", instrumento: "echeq" },
+      TASAS,
+      ahora
+    );
+    expect(costo(r, "Interés")).toBeCloseTo(
+      1_000_000 - 1_000_000 / (1 + 0.4 * (9 / 365)),
+      2
+    );
+  });
+
+  // 1.000.000 × 2,5% × 2/365 = 137, por debajo del piso de 500 de la ALyC.
+  it("aplica el mínimo de arancel en el mercado cuando el cálculo da menos", () => {
+    const r = simularCheques(
+      { ...input, modalidad: "comitente", instrumento: "echeq", monto: 100_000 },
+      TASAS,
+      ahora
+    );
+    expect(costo(r, "Arancel")).toBe(500);
   });
 
   it("comitente desglosa arancel, IVA, derechos y percepción", () => {
@@ -169,7 +192,7 @@ describe("simularCheques", () => {
   it("salta al tramo largo cuando la acreditación pasa los 45 días", () => {
     const corto = simularCheques({ ...input, fecha_pago: "2026-02-10" }, TASAS, ahora);
     expect(corto.dias_considerados).toBeLessThanOrEqual(45);
-    expect(corto.tna_aplicada).toBe(50);
+    expect(corto.tna_interes).toBe(48);
 
     const largo = simularCheques({ ...input, fecha_pago: "2026-03-16" }, TASAS, ahora);
     expect(largo.dias_considerados).toBeGreaterThanOrEqual(46);
@@ -257,6 +280,42 @@ describe("simularCheques", () => {
     );
     expect(r.monto_negociado).toBe(800_000);
     expect(r.monto_a_recibir).toBeLessThan(800_000);
+  });
+});
+
+/**
+ * Planilla de descuento directo del cliente (12/08/2026): capital
+ * $35.990.137,04 a 42 días, 4% mensual, 2% de gastos bancarios.
+ *
+ * ⚠️ La planilla arranca el 08/06 y cuenta 42 días; acá se simula desde el
+ * 09/06 para llegar a los mismos 42, porque falta confirmar cómo cuenta los
+ * días de acreditación fuera del mercado (ver pendientes en CLAUDE.md).
+ */
+describe("simularCheques — planilla de descuento directo", () => {
+  const r = simularCheques(
+    {
+      monto: 35_990_137.04,
+      fecha_pago: "2026-07-17",
+      modalidad: "directo",
+      instrumento: "cheque",
+    },
+    TASAS,
+    d("2026-06-09")
+  );
+  const costo = (concepto: string) =>
+    r.costos.find((c) => c.concepto === concepto)?.monto ?? 0;
+
+  it("cuenta los mismos 42 días", () => {
+    expect(r.dias_considerados).toBe(42);
+  });
+
+  it("reproduce cada línea de la planilla", () => {
+    expect(costo("Interés")).toBeCloseTo(2_015_447.67, 1);
+    expect(costo("Gastos bancarios")).toBeCloseTo(719_802.74, 1);
+    expect(costo("Ingresos Brutos")).toBeCloseTo(181_390.29, 1);
+    expect(costo("IVA")).toBeCloseTo(612_494.55, 1);
+    expect(r.descuento_total).toBeCloseTo(3_529_135.25, 1);
+    expect(r.monto_a_recibir).toBeCloseTo(32_461_001.79, 1);
   });
 });
 

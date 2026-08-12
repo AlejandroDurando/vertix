@@ -31,6 +31,7 @@ const COSTOS_POR_DEFECTO: CostosOperacion = {
   iva: 21,
   iva_directo: 21,
   derechos_mercado: 0.06,
+  ingresos_brutos: 9,
   impuesto_cheque: 1.2,
   arancel_minimo: 500,
 };
@@ -114,6 +115,7 @@ const CLAVES_COSTOS: Record<keyof CostosOperacion, string> = {
   iva: "iva",
   iva_directo: "iva_directo",
   derechos_mercado: "derechos_mercado",
+  ingresos_brutos: "ingresos_brutos",
   impuesto_cheque: "impuesto_cheque",
   arancel_minimo: "arancel_minimo",
 };

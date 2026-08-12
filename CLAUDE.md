@@ -173,33 +173,44 @@ es cuando el vendedor cobra de verdad. El plazo depende del instrumento:
 
 Lo del cheque está confirmado contra la planilla de cotización (sus tres filas usan esas fechas);
 lo de la FCE, contra el boleto 348.884 de AdCap: concertación 10/08, liquidación 11/08, vencimiento
-14/09 (lunes), cobro 15/09 = **35 días**. ⚠️ Falta confirmar si el cheque también debería contar
-desde la liquidación; hoy no lo hace porque la planilla dice que no.
+14/09 (lunes), cobro 15/09 = **35 días**.
+
+⚠️ Dos cosas sin confirmar: si el cheque también debería contar desde la liquidación (hoy no lo
+hace porque la planilla dice que no), y **cómo cuenta los días el circuito directo**: su planilla
+usa 42 días para un vencimiento el viernes 17/07 desde el 08/06, que son 39 corridos + 3. Esos 3
+pueden ser +1 día hábil o +3 corridos —con ese ejemplo caen en el mismo lunes— y difieren en
+cualquier otra fecha. Hoy el directo usa la misma regla que el cheque en el mercado (+2 hábiles),
+que para ese caso da 43.
 
 **El interés es un descuento racional, no simple** (alineado con la planilla el 07/08/2026):
 `V − V/(1 + i·d/365)`, no `V·i·d/365`. El arancel de Vertix, en cambio, **sí** se calcula sobre el
 nominal y prorrateado por días, y ya no se suma a la tasa: es una línea aparte del desglose. El
 `tna_aplicada` (tasa + gastos) se sigue informando como referencia, pero no es lo que se cobra.
 
-**El simulador desglosa todo lo que se le cobra al vendedor**, en pesos. Qué se cobra depende de la
-modalidad y del instrumento:
+**Dentro y fuera del mercado se calcula distinto, no sólo con otras tasas.** Son dos esquemas
+separados en `lib/simulador.ts` (`calcularCostos` y `costosDirecto`), cada uno verificado al peso
+contra una cotización real del cliente:
 
-| Concepto | comitente (cheque/echeq) | comitente (FCE) | directo |
-|---|---|---|---|
-| Interés (descuento racional) | sí | sí | sí |
-| Arancel (% anual sobre el nominal) | sí | sí | sí |
-| IVA del arancel | sí (`iva`) | **no** | sí (`iva_directo`) |
-| Derechos de mercado (0,06% prorrateado a 90 días, sobre el valor presente) | sí | **sí** | no |
-| IVA de los derechos | sí | **no** | — |
-| Percepción de IVA (21% del interés) | sí, si el comprador es RI | **no** | no |
-| Impuesto al cheque (1,2% del nominal) | no | no | sí, si faltan <10 días hábiles |
+| | mercado de capitales | fuera del mercado |
+|---|---|---|
+| Interés | **descuento racional** `V − V/(1+i·d/365)` | **descuento simple** `V·i·d/360` (4% mensual sobre meses de 30) |
+| Arancel / gastos | % **anual** prorrateado por días, sobre el nominal | % **fijo del capital**, sin prorratear |
+| IVA | sobre el arancel y sobre los derechos (`iva`) | sobre interés + gastos + IIBB (`iva_directo`) |
+| Ingresos Brutos | no | **sí**, `ingresos_brutos` (9%) sobre el interés |
+| Derechos de mercado | sí, 0,06% prorrateado a 90 días sobre el valor presente | no |
+| Percepción de IVA | sí, 21% del interés, si el comprador es RI | no |
+| Impuesto al cheque | no | sí, 1,2% del nominal si faltan <10 días hábiles |
 
-La FCE no tributa IVA ni percepción en ningún concepto (confirmado por AdCap el 07/08/2026 y
-verificado contra el boleto). El impuesto al cheque se cobra sólo en plazos cortos porque el
-interés de tan pocos días no llega a cubrirlo; más allá queda absorbido por la tasa. El
-**`arancel_minimo`** (500) es un piso en pesos que cobra la ALyC si el cálculo da menos, y sólo
-aplica cuando el tramo tiene arancel. `iva_directo` está pendiente de confirmación de Martín: si
-dice que no se cobra, se pone en 0 en la hoja sin tocar código.
+⚠️ **El 2% / 3,5% de los tramos directos es una comisión fija**, no una tasa anual: interpretarlo
+como anual subestimaba el costo casi diez veces (en la planilla, $719.802 contra $82.826).
+
+**La FCE es la excepción dentro del mercado**: paga interés, arancel y derechos, pero **no tributa
+IVA ni percepción en ningún concepto** (confirmado por AdCap el 07/08/2026 y verificado contra el
+boleto 348.884).
+
+El **`arancel_minimo`** (500) es un piso en pesos que cobra la ALyC si el cálculo da menos; sólo
+aplica en el mercado, donde el arancel se prorratea. `iva_directo` está pendiente de confirmación
+de Martín: si dice que no se cobra, se pone en 0 en la hoja sin tocar código.
 
 **En la FCE se negocia el valor aceptado, no el total facturado.** El simulador pide los dos
 importes (`monto` = total de la factura, `monto_aceptado` = lo que aceptó el comprador; en el
