@@ -6,6 +6,8 @@ import {
   esFeriado,
   esFinDeSemana,
   parseISODate,
+  proximoDiaHabil,
+  sumarDiasCorridos,
   sumarDiasHabiles,
   toISODate,
 } from "@/lib/fechas";
@@ -19,6 +21,23 @@ describe("parseISODate / toISODate", () => {
   it("hace roundtrip sin corrimientos por timezone", () => {
     expect(toISODate(d("2026-01-01"))).toBe("2026-01-01");
     expect(toISODate(d("2026-12-31"))).toBe("2026-12-31");
+  });
+});
+
+describe("sumarDiasCorridos / proximoDiaHabil", () => {
+  it("suma días corridos sin saltear fines de semana", () => {
+    expect(toISODate(sumarDiasCorridos(d("2026-01-02"), 3))).toBe("2026-01-05");
+    // Cruza el cambio de mes.
+    expect(toISODate(sumarDiasCorridos(d("2026-01-30"), 3))).toBe("2026-02-02");
+  });
+
+  it("deja la fecha como está si ya es hábil", () => {
+    expect(toISODate(proximoDiaHabil(d("2026-01-05")))).toBe("2026-01-05");
+  });
+
+  it("corre el fin de semana y el feriado al siguiente hábil", () => {
+    expect(toISODate(proximoDiaHabil(d("2026-01-03")))).toBe("2026-01-05"); // sábado
+    expect(toISODate(proximoDiaHabil(d("2026-08-17")))).toBe("2026-08-18"); // feriado
   });
 });
 

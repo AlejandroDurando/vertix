@@ -182,6 +182,7 @@ const CAMPO_LABELS: Record<string, string> = {
   instrumento: "Instrumento",
   modalidad: "Modalidad",
   monto_cheque: "Monto del cheque",
+  monto_aceptado: "Valor aceptado (FCE)",
   fecha_pago: "Fecha de pago",
   banco_emisor: "Banco emisor",
   cuit_librador: "CUIT del librador",

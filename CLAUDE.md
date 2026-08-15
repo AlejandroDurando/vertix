@@ -14,7 +14,7 @@ npm run dev          # desarrollo (localhost:3000)
 npm run build        # build de producción
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
-npm test             # vitest run — 85 tests
+npm test             # vitest run — 137 tests
 npm run check:sheets # verifica credenciales + tasas leídas de la hoja
 ```
 
@@ -31,10 +31,11 @@ form client component de `components/forms/`, que arma un `FormData`/JSON y lo p
 handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve el sobre
 `ApiResponse` (`types/index.ts`).
 
-- **`/simulador`** → `POST /api/simulador`: no persiste nada. Lee tasas (`lib/tasas.ts`, cache 1h
-  con fallback hardcodeado) y calcula con `lib/simulador.ts` (sistema francés para préstamos,
-  descuento simple para cheques). Para cheques consulta BCRA (`lib/bcra.ts`, fail-open) y arma el
-  desglose tasa + arancel de `types/index.ts` (`SimuladorChequesOutput`).
+- **`/simulador`** → `POST /api/simulador`: no persiste nada. Lee tasas (`lib/tasas.ts`, cache de 1
+  minuto con fallback hardcodeado) y calcula con `lib/simulador.ts` (sistema francés para préstamos;
+  para cheques, descuento racional en el mercado y simple fuera de él — ver la tabla de más abajo).
+  Para cheques consulta BCRA (`lib/bcra.ts`, fail-open) y arma el desglose de `types/index.ts`
+  (`SimuladorChequesOutput`).
 - **`/contacto` y `/precalificacion`** → JSON body. Validan con `parseSimulador`/schemas de
   `lib/validations.ts`, escriben la fila en el CRM (`lib/sheets-crm.ts`, pestañas `Contacto` /
   `Precalificacion`) y mandan el email interno (`lib/email.ts`) en paralelo con `Promise.all`.
@@ -131,7 +132,7 @@ del pagador de la factura) y su 40% se descompone en **28% de tasa + 12% de aran
 (verificado contra el boleto 348.884 de AdCap el 07/08/2026). Cada tramo son **dos filas en la
 hoja** (tasa y gastos) para poder ajustar una sin la otra; `tramoParaOperacion()` en `lib/tasas.ts`
 elige cuál aplica. Los costos del vendedor (`iva` 21, `iva_directo` 21, `derechos_mercado` 0,06,
-`impuesto_cheque` 1,2, `arancel_minimo` 500) son cinco filas más, **opcionales**: si faltan se usan
+`ingresos_brutos` 9, `impuesto_cheque` 1,2, `arancel_minimo` 500) son seis filas más, **opcionales**: si faltan se usan
 esos mismos valores por defecto. `gastos_comitente_fce` también es opcional. **El cache de la hoja
 es de 1 minuto** (era de 1 hora hasta el 07/08/2026): los dueños ajustan tasas varias veces por
 semana y necesitan verlo enseguida. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
@@ -168,19 +169,23 @@ es cuando el vendedor cobra de verdad. El plazo depende del instrumento:
 
 | | desde | hasta |
 |---|---|---|
-| cheque / echeq | el día de la operación | fecha de pago **+2 días hábiles** (+3 si cae finde/feriado) |
+| cheque / echeq **en el mercado** | el día de la operación | fecha de pago **+2 días hábiles** (+3 si cae finde/feriado) |
+| cheque / echeq **fuera del mercado** | el día de la operación | fecha de pago **+3 días corridos**, corridos al siguiente hábil si caen en finde/feriado |
 | FCE | la **liquidación**, a 1 día hábil | fecha de pago **+1 día hábil** (+2 si cae finde/feriado) |
 
-Lo del cheque está confirmado contra la planilla de cotización (sus tres filas usan esas fechas);
-lo de la FCE, contra el boleto 348.884 de AdCap: concertación 10/08, liquidación 11/08, vencimiento
-14/09 (lunes), cobro 15/09 = **35 días**.
+Lo del mercado está confirmado contra la planilla *compra CPD PESOS* (sus tres filas usan esas
+fechas); lo de la FCE, contra el boleto 348.884 de AdCap: concertación 10/08, liquidación 11/08,
+vencimiento 14/09 (lunes), cobro 15/09 = **35 días**.
 
-⚠️ Dos cosas sin confirmar: si el cheque también debería contar desde la liquidación (hoy no lo
-hace porque la planilla dice que no), y **cómo cuenta los días el circuito directo**: su planilla
-usa 42 días para un vencimiento el viernes 17/07 desde el 08/06, que son 39 corridos + 3. Esos 3
-pueden ser +1 día hábil o +3 corridos —con ese ejemplo caen en el mismo lunes— y difieren en
-cualquier otra fecha. Hoy el directo usa la misma regla que el cheque en el mercado (+2 hábiles),
-que para ese caso da 43.
+**Que el cheque cuente desde el día de la operación y no desde la liquidación está confirmado**
+(14/08/2026: "los cheques tomalos como en la planilla, replicá eso porque así da bien el boleto").
+La liquidación a 24hs es sólo de la FCE.
+
+**Fuera del mercado son 3 días corridos, no días hábiles** (14/08/2026): "que sea +3 siempre y
+cuando el pago no caiga feriado o fin de semana, sino se corre al siguiente hábil". Su ejemplo: un
+cheque que vence el viernes 14/08 cobra el martes 18/08, porque el +3 cae en el feriado del lunes
+17. Da los mismos 42 días de la planilla directa (vencimiento el viernes 17/07 → lunes 20/07), que
+antes se calculaban con +2 hábiles y daban 43: se cotizaba un día de más.
 
 **El interés es un descuento racional, no simple** (alineado con la planilla el 07/08/2026):
 `V − V/(1 + i·d/365)`, no `V·i·d/365`. El arancel de Vertix, en cambio, **sí** se calcula sobre el
@@ -202,26 +207,56 @@ contra una cotización real del cliente:
 | Impuesto al cheque | no | sí, 1,2% del nominal si faltan <10 días hábiles |
 
 ⚠️ **El 2% / 3,5% de los tramos directos es una comisión fija**, no una tasa anual: interpretarlo
-como anual subestimaba el costo casi diez veces (en la planilla, $719.802 contra $82.826).
+como anual subestimaba el costo casi diez veces (en la planilla, $719.802 contra $82.826). Los
+**dos** tramos son fijos: el 3,5% del tramo largo tampoco se prorratea (confirmado el 14/08/2026).
 
 **La FCE es la excepción dentro del mercado**: paga interés, arancel y derechos, pero **no tributa
 IVA ni percepción en ningún concepto** (confirmado por AdCap el 07/08/2026 y verificado contra el
 boleto 348.884).
 
 El **`arancel_minimo`** (500) es un piso en pesos que cobra la ALyC si el cálculo da menos; sólo
-aplica en el mercado, donde el arancel se prorratea. `iva_directo` está pendiente de confirmación
-de Martín: si dice que no se cobra, se pone en 0 en la hoja sin tocar código.
+aplica en el mercado, donde el arancel se prorratea ("es por sistema", cliente 13/08/2026: el
+arancel de Vertix fuera del mercado no tiene piso).
 
-**En la FCE se negocia el valor aceptado, no el total facturado.** El simulador pide los dos
-importes (`monto` = total de la factura, `monto_aceptado` = lo que aceptó el comprador; en el
-ejemplo del cliente, el 80%) y cotiza sobre el aceptado, que es lo que figura como nominal en el
-boleto. `monto_negociado` en la respuesta dice cuál se usó.
+**El esquema de afuera del mercado lo confirmó Martín** (13/08/2026) y la planilla lo reproduce al
+peso: "los gastos bancarios se calculan sobre el valor nominal del cheque, el descuento también,
+ingresos brutos sobre el descuento, y el IVA sobre todo eso"; sin derechos de mercado ("no lo
+estamos haciendo por el MAV") ni percepción ("no somos agentes de percepción"). O sea que
+`iva_directo` queda en **21** y deja de estar pendiente. Re-confirmado el 14/08/2026 ("se calcula
+como indicás, IVA sobre todos los gastos e int."), junto con Ingresos Brutos al 9% ("fijo por
+ahora"), que ya es una fila editable de la hoja. La pestaña **`ejemplo cheque`** de la hoja de tasas
+repite esa misma planilla, con valores fijos y sin fórmulas vivas. El **impuesto al cheque** no aparece en esa
+descripción porque sólo se cobra cuando faltan menos de 10 días hábiles y el ejemplo es a 42 días:
+se mantiene como estaba (1,2% del nominal, aparte y fuera de la base del IVA), pendiente de que lo
+desmientan.
+
+**En la FCE se negocia el valor aceptado, no el total facturado.** Simulador y precalificación piden
+los dos importes (`monto` / `monto_cheque` = total de la factura, `monto_aceptado` = lo que aceptó
+el comprador) y se cotiza sobre el aceptado, que es lo que figura como nominal en el boleto.
+`monto_negociado` en la respuesta dice cuál se usó. **El aceptado se precarga con el 80%**
+(`PORCENTAJE_ACEPTADO_FCE` en `lib/validations.ts`) porque es lo habitual, pero se puede corregir:
+en cuanto se toca el campo deja de recalcularse solo. La precalificación lo pide desde el
+13/08/2026 para que el lead llegue con el dato de la operación real.
+
+**Hacia afuera se informa una sola tasa: la global.** En el mercado el resultado muestra
+`tna_aplicada` (tasa + arancel: el 40% de la FCE), no el reparto entre los dos, porque ese reparto
+cambia de operación en operación y confundía (pedido del cliente, 13/08/2026). Por dentro se sigue
+calculando separado, y el simulador interno muestra el desglose a partir de `tna_interes` y
+`arancel`. Fuera del mercado no hay tasa global: el arancel es una comisión fija sobre el capital,
+así que se informa sólo la tasa de descuento y los gastos van en el detalle, en pesos.
 
 **La percepción de IVA se cotiza siempre en el simulador público.** Depende de la condición del
 **comprador**, que lo consigue Vertix y no se conoce al simular, así que se muestra el peor caso
 (Responsable Inscripto) y se saca en la cotización real si es monotributista o consumidor final.
 Con `?interno=1` el simulador muestra un selector para elegir esa condición — es sólo un parámetro
 en la URL, sin login: no expone nada que no se pueda deducir cotizando.
+
+**El simulador interno también puede concertar mañana.** Muchos clientes deciden vender al día
+siguiente y hay que reprogramar la liquidación (pedido del cliente, 13/08/2026), así que con
+`?interno=1` aparece un selector *hoy / mañana* que mueve el día desde el que se cotiza: cambian los
+días de descuento, el tramo de tasa que aplica y el piso de 5 días hábiles. "Mañana" es el **próximo
+día hábil** (`fechaConcertacion()` en `lib/validations.ts`): ni el mercado ni el banco liquidan un
+sábado. El simulador público siempre cotiza desde hoy.
 
 **No se descuentan cheques propios**: si el CUIT del librador y el del endosatario coinciden, se
 rechaza en simulador y precalificación.
@@ -231,7 +266,7 @@ rechaza en simulador y precalificación.
 | Integración | Estado |
 |---|---|
 | **Google Sheets — tasas** | Activo. `GOOGLE_SHEETS_ID`, pestaña `tasas`. La service account **ya es Editor** acá (lo era sólo Lector hasta el 06/08/2026): se puede escribir por API pidiendo el scope `spreadsheets` en vez de `spreadsheets.readonly`. La app igual lee con el scope de sólo lectura. |
-| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `Precalificacion!R` = modalidad, `AltasPF!Y` = régimen simplificado, `AltasPJ!AB` = tiene_eecc. Todos los encabezados están escritos y coinciden con el orden de `sheets-crm.ts` (verificado el 06/08/2026); al agregar una columna, escribir también su encabezado. |
+| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `Precalificacion!R` = modalidad, `Precalificacion!S` = monto_aceptado (FCE), `AltasPF!Y` = régimen simplificado, `AltasPJ!AB` = tiene_eecc. Todos los encabezados están escritos y coinciden con el orden de `sheets-crm.ts` (verificado el 06/08/2026); al agregar una columna, escribir también su encabezado. ⚠️ Falta escribir a mano el encabezado de `Precalificacion!S1` (agregada el 13/08/2026). |
 | **Resend (email)** | Activo para la casilla interna. Los emails de confirmación al solicitante **no llegan a externos** hasta verificar el dominio `vertix.com.ar` en Resend (DNS). La API devuelve `confirmacion_enviada` para chequearlo. |
 | **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
 | **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |

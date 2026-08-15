@@ -1,10 +1,40 @@
 import { z } from "zod";
 import { esCuitValido, normalizarCuit } from "./cuit";
-import { diasHabilesEntre, hoy, parseISODate } from "./fechas";
+import { diasHabilesEntre, hoy, parseISODate, sumarDiasHabiles } from "./fechas";
 import type { InstrumentoCheque, ModalidadCheque } from "@/types";
 
 /** Días hábiles mínimos entre hoy y la fecha de pago del cheque. */
 export const MIN_DIAS_HABILES = 5;
+
+/**
+ * Día en que se concierta la operación.
+ *
+ * El simulador interno puede pararse en el día siguiente: muchos clientes
+ * deciden vender recién mañana y hay que reprogramar la liquidación de los
+ * fondos (pedido del cliente, 13/08/2026). Si mañana no es hábil se toma el
+ * próximo día hábil, porque ni el mercado ni el banco liquidan un sábado.
+ */
+export type Concertacion = "hoy" | "manana";
+
+export function fechaConcertacion(
+  concertacion?: Concertacion,
+  ahora: Date = hoy()
+): Date {
+  return concertacion === "manana" ? sumarDiasHabiles(ahora, 1) : ahora;
+}
+
+/**
+ * Parte de una FCE que el comprador acepta habitualmente ("por lo general el
+ * saldo aceptado es el 80%", cliente 13/08/2026). Es sólo lo que se precarga en
+ * el formulario: el importe real se puede corregir siempre, porque cambia de
+ * operación en operación.
+ */
+export const PORCENTAJE_ACEPTADO_FCE = 80;
+
+/** Valor aceptado sugerido de una FCE, redondeado a centavos. */
+export function valorAceptadoSugerido(montoTotal: number): number {
+  return Math.round(montoTotal * PORCENTAJE_ACEPTADO_FCE) / 100;
+}
 
 /**
  * El mínimo de días hábiles lo impone el mercado de capitales, así que sólo
@@ -100,6 +130,15 @@ export const precalificacionChequesSchema = z.object({
   instrumento: z.enum(["cheque", "echeq", "fce"]),
   modalidad: z.enum(["directo", "comitente"]),
   monto_cheque: montoSchema,
+  // Sólo FCE: lo que el comprador aceptó, que es lo que se negocia. Se pide
+  // también acá para que el lead llegue con el dato de la operación real
+  // (pedido del cliente, 13/08/2026). Obligatorio para FCE (ver superRefine).
+  // El preprocess es porque el formulario viaja como multipart: un campo vacío
+  // llega como "" y `readUploads` lo convierte en 0, que acá es "no vino".
+  monto_aceptado: z.preprocess(
+    (v) => (v === "" || v === 0 ? undefined : v),
+    montoSchema.optional()
+  ),
   fecha_pago: fechaSchema,
   banco_emisor: trimmed(120),
   cuit_librador: cuitSchema,
@@ -160,6 +199,23 @@ export const precalificacionSchema = z
       return;
     }
 
+    // En la FCE lo que se negocia es el valor aceptado, no el total facturado.
+    if (data.instrumento === "fce") {
+      if (data.monto_aceptado == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monto_aceptado"],
+          message: "Indicá el valor aceptado de la FCE.",
+        });
+      } else if (data.monto_aceptado > data.monto_cheque) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["monto_aceptado"],
+          message: "El valor aceptado no puede superar el total de la factura.",
+        });
+      }
+    }
+
     if (
       modalidadRequiereMinDias(data.modalidad) &&
       !cumpleMinDiasHabiles(data.fecha_pago)
@@ -190,6 +246,9 @@ export const simuladorChequesSchema = z
     // Sólo llega desde el simulador interno; desde la web se cotiza el peor
     // caso ("ri", el default) porque el comprador todavía no está definido.
     condicion_comprador: z.enum(["ri", "mono_cf"]).optional(),
+    // También sólo del simulador interno: cotizar como si la operación se
+    // concertara mañana. Desde la web siempre es hoy.
+    concertacion: z.enum(["hoy", "manana"]).optional(),
   })
   .superRefine((data, ctx) => {
     if (normalizarCuit(data.cuit_librador) === normalizarCuit(data.cuit_endosatario)) {
@@ -236,9 +295,11 @@ export const simuladorChequesSchema = z
       }
     }
 
+    // El piso de días hábiles se mide desde el día en que se concierta, que en
+    // el simulador interno puede ser mañana.
     if (
       modalidadRequiereMinDias(data.modalidad) &&
-      !cumpleMinDiasHabiles(data.fecha_pago)
+      !cumpleMinDiasHabiles(data.fecha_pago, fechaConcertacion(data.concertacion))
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

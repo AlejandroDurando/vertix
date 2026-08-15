@@ -12,9 +12,13 @@ import { formatearCuit } from "@/lib/cuit";
 import {
   MIN_DIAS_HABILES,
   MODALIDAD_OPCIONES,
+  PORCENTAJE_ACEPTADO_FCE,
+  fechaConcertacion,
   instrumentoSoloComitente,
   instrumentoSoloDirecto,
   modalidadRequiereMinDias,
+  valorAceptadoSugerido,
+  type Concertacion,
 } from "@/lib/validations";
 import { TELEFONO, TELEFONO_URL, WHATSAPP_URL } from "@/lib/contacto";
 import type {
@@ -38,6 +42,10 @@ const CONDICION_COMPRADOR = [
   { value: "ri", label: "Responsable Inscripto" },
   { value: "mono_cf", label: "Monotributista o consumidor final" },
 ];
+const CONCERTACION = [
+  { value: "hoy", label: "Hoy" },
+  { value: "manana", label: "Mañana (próximo día hábil)" },
+];
 
 const ARS = new Intl.NumberFormat("es-AR", {
   style: "currency",
@@ -50,6 +58,9 @@ const fmtFecha = (iso: string) => {
   return `${d}/${m}/${y}`;
 };
 
+/** Porcentaje con coma decimal, como se escribe en castellano. */
+const fmtPct = (n: number) => `${String(n).replace(".", ",")}%`;
+
 export function SimuladorForm() {
   const [tipo, setTipo] = useState<Tipo>("cheques");
   const [submitting, setSubmitting] = useState(false);
@@ -61,6 +72,12 @@ export function SimuladorForm() {
   const [modalidad, setModalidad] = useState<ModalidadCheque>("directo");
   const [instrumento, setInstrumento] = useState<InstrumentoCheque>("cheque");
   const [interno, setInterno] = useState(false);
+  const [concertacion, setConcertacion] = useState<Concertacion>("hoy");
+  // El valor aceptado de la FCE se precarga con el 80% del total y se puede
+  // corregir: en cuanto se toca, deja de recalcularse solo.
+  const [montoTotal, setMontoTotal] = useState("");
+  const [aceptado, setAceptado] = useState("");
+  const [aceptadoEditado, setAceptadoEditado] = useState(false);
 
   // Quien simula desde la web no sabe quién va a comprar el cheque —lo consigue
   // Vertix—, así que la percepción de IVA se cotiza siempre. Con ?interno=1 el
@@ -82,11 +99,22 @@ export function SimuladorForm() {
 
   // El mínimo de 5 días hábiles lo exige el mercado de capitales: sólo rige
   // para la cuenta comitente. Directo con Vertix se puede operar con menos.
+  // Se cuenta desde el día en que se concierta, que puede ser mañana.
   const exigeMinDias = modalidadRequiereMinDias(modalidadEfectiva);
   const minFechaPago = useMemo(
-    () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
-    []
+    () =>
+      toISODate(
+        sumarDiasHabiles(fechaConcertacion(concertacion), MIN_DIAS_HABILES)
+      ),
+    [concertacion]
   );
+
+  // 80% del total, redondeado a centavos, mientras nadie lo corrija.
+  const aceptadoSugerido = useMemo(() => {
+    const n = Number(montoTotal);
+    return Number.isFinite(n) && n > 0 ? String(valorAceptadoSugerido(n)) : "";
+  }, [montoTotal]);
+  const valorAceptado = aceptadoEditado ? aceptado : aceptadoSugerido;
   const fechaMuyCercana = exigeMinDias && fechaPago !== "" && fechaPago < minFechaPago;
 
   function changeTipo(next: Tipo) {
@@ -116,7 +144,12 @@ export function SimuladorForm() {
         instrumento: String(raw.instrumento ?? ""),
         cuit_librador: String(raw.cuit_librador ?? ""),
         cuit_endosatario: String(raw.cuit_endosatario ?? ""),
-        ...(interno ? { condicion_comprador: String(raw.condicion_comprador ?? "ri") } : {}),
+        ...(interno
+          ? {
+              condicion_comprador: String(raw.condicion_comprador ?? "ri"),
+              concertacion,
+            }
+          : {}),
       };
       const res = await postJson<ChequesResult>("/api/simulador", payload);
       setSubmitting(false);
@@ -172,11 +205,15 @@ export function SimuladorForm() {
             step="0.01"
             min="1"
             required
+            value={montoTotal}
+            onChange={(e) => setMontoTotal(e.target.value)}
             error={fe("monto")}
           />
           {tipo === "cheques" ? (
             <>
-              {/* En la FCE se negocia sólo la parte que el comprador acepta. */}
+              {/* En la FCE se negocia sólo la parte que el comprador acepta.
+                  Por lo general es el 80%, así que se precarga y se corrige
+                  únicamente cuando la operación viene con otro importe. */}
               {esFce && (
                 <Input
                   name="monto_aceptado"
@@ -186,7 +223,12 @@ export function SimuladorForm() {
                   step="0.01"
                   min="1"
                   required
-                  hint="La parte de la factura que el comprador aceptó: es lo que se descuenta."
+                  value={valorAceptado}
+                  onChange={(e) => {
+                    setAceptadoEditado(true);
+                    setAceptado(e.target.value);
+                  }}
+                  hint={`Calculado como el ${PORCENTAJE_ACEPTADO_FCE}% del total de la factura. Si el comprador aceptó otro importe, corregilo.`}
                   error={fe("monto_aceptado")}
                 />
               )}
@@ -254,6 +296,17 @@ export function SimuladorForm() {
                 hint="No puede coincidir con el del librador."
                 error={fe("cuit_endosatario")}
               />
+              {interno && (
+                <Select
+                  name="concertacion"
+                  label="Fecha de concertación"
+                  options={CONCERTACION}
+                  value={concertacion}
+                  onChange={(e) => setConcertacion(e.target.value as Concertacion)}
+                  hint="Sólo visible en el simulador interno. Con “mañana” se cotiza como si la operación se cerrara el próximo día hábil: cambian los días de descuento, el tramo de tasa y el mínimo de vencimiento."
+                  error={fe("concertacion")}
+                />
+              )}
               {interno && modalidadEfectiva === "comitente" && (
                 <Select
                   name="condicion_comprador"
@@ -327,7 +380,9 @@ export function SimuladorForm() {
         </div>
       </form>
 
-      {tipo === "cheques" && chequesResult && <ChequesResultCard data={chequesResult} />}
+      {tipo === "cheques" && chequesResult && (
+        <ChequesResultCard data={chequesResult} interno={interno} />
+      )}
       {tipo === "prestamos" && prestamosResult && <PrestamosResultCard data={prestamosResult} />}
     </div>
   );
@@ -350,7 +405,13 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ChequesResultCard({ data }: { data: ChequesResult }) {
+function ChequesResultCard({
+  data,
+  interno,
+}: {
+  data: ChequesResult;
+  interno: boolean;
+}) {
   return (
     <ResultCard>
       <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-vertix/60">
@@ -378,8 +439,23 @@ function ChequesResultCard({ data }: { data: ChequesResult }) {
           value={fmtFecha(data.fecha_acreditacion_estimada)}
         />
         <Row label="Tramo de plazo" value={data.tramo} />
-        <Row label="Tasa de descuento (TNA)" value={`${data.tna_interes}%`} />
-        <Row label="Costo total sobre el nominal" value={`${data.costo_total_pct}%`} />
+        {/* En el mercado se informa un solo porcentaje: el global (por ejemplo
+            el 40% de la FCE), aunque por dentro se calcule como tasa + arancel.
+            Fuera del mercado el arancel es una comisión fija sobre el capital,
+            así que sumarlo a la tasa daría un número sin sentido: ahí se informa
+            sólo la tasa de descuento y los gastos van en el detalle, en pesos. */}
+        {data.modalidad === "comitente" ? (
+          <Row label="Tasa total (TNA)" value={fmtPct(data.tna_aplicada)} />
+        ) : (
+          <Row label="Tasa de descuento (TNA)" value={fmtPct(data.tna_interes)} />
+        )}
+        {interno && data.modalidad === "comitente" && (
+          <Row
+            label="Desglose interno"
+            value={`${fmtPct(data.tna_interes)} tasa + ${fmtPct(data.arancel)} arancel`}
+          />
+        )}
+        <Row label="Costo total sobre el nominal" value={fmtPct(data.costo_total_pct)} />
       </div>
 
       <h4 className="mb-1 mt-5 text-sm font-semibold uppercase tracking-wide text-vertix/60">

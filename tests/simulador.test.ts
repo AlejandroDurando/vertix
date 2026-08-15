@@ -43,6 +43,27 @@ describe("fechaAcreditacionEstimada", () => {
     expect(toISODate(fechaAcreditacionEstimada(d("2026-01-12")))).toBe("2026-01-14");
   });
 
+  // Fuera del mercado son 3 días corridos, corridos al siguiente hábil si caen
+  // en fin de semana o feriado (regla del cliente, 14/08/2026).
+  const directo = (iso: string) =>
+    toISODate(fechaAcreditacionEstimada(d(iso), "cheque", "directo"));
+
+  it("fuera del mercado suma 3 días corridos", () => {
+    // Lunes 2026-01-12 → jueves 2026-01-15
+    expect(directo("2026-01-12")).toBe("2026-01-15");
+  });
+
+  it("fuera del mercado corre al siguiente hábil si el +3 cae en feriado", () => {
+    // Ejemplo del cliente: vence el viernes 14/08, el +3 cae en el feriado del
+    // lunes 17 (San Martín) → cobra el martes 18.
+    expect(directo("2026-08-14")).toBe("2026-08-18");
+  });
+
+  it("fuera del mercado corre al siguiente hábil si el +3 cae en fin de semana", () => {
+    // Jueves 2026-01-15 → domingo 18 → lunes 2026-01-19
+    expect(directo("2026-01-15")).toBe("2026-01-19");
+  });
+
   it("suma 3 días hábiles si la fecha de pago cae en fin de semana", () => {
     // Sábado 2026-01-17 → miércoles 2026-01-21
     expect(toISODate(fechaAcreditacionEstimada(d("2026-01-17")))).toBe("2026-01-21");
@@ -69,11 +90,11 @@ describe("simularCheques", () => {
 
   it("descuenta hasta la fecha estimada de acreditación", () => {
     const r = simularCheques(input, TASAS, ahora);
-    // Acreditación: 2026-01-14 → 9 días calendario desde el 05.
-    expect(r.fecha_acreditacion_estimada).toBe("2026-01-14");
+    // Fuera del mercado se acredita a +3 corridos: 2026-01-15, 10 días desde el 05.
+    expect(r.fecha_acreditacion_estimada).toBe("2026-01-15");
     // El vendedor cobra el día de la operación, no cuando se acredita el comprador.
     expect(r.fecha_acreditacion_vendedor).toBe("2026-01-05");
-    expect(r.dias_considerados).toBe(9);
+    expect(r.dias_considerados).toBe(10);
     // Fuera del mercado el arancel es fijo, así que no se suma a la tasa.
     expect(r.tna_aplicada).toBe(48);
   });
@@ -82,7 +103,7 @@ describe("simularCheques", () => {
   // no el racional del mercado de capitales.
   it("el interés directo es descuento simple sobre meses de 30 días", () => {
     const r = simularCheques(input, TASAS, ahora);
-    expect(costo(r, "Interés")).toBeCloseTo(1_000_000 * 0.48 * (9 / 360), 2);
+    expect(costo(r, "Interés")).toBeCloseTo(1_000_000 * 0.48 * (10 / 360), 2);
   });
 
   it("los gastos bancarios son un porcentaje fijo del capital", () => {
@@ -106,8 +127,8 @@ describe("simularCheques", () => {
   it("suma el impuesto al cheque si vence en menos de 10 días hábiles", () => {
     const r = simularCheques(input, TASAS, ahora);
     expect(costo(r, "Impuesto al cheque")).toBe(12_000);
-    expect(r.descuento_total).toBeCloseTo(52_026.8, 2);
-    expect(r.monto_a_recibir).toBeCloseTo(947_973.2, 2);
+    expect(r.descuento_total).toBeCloseTo(53_785.33, 2);
+    expect(r.monto_a_recibir).toBeCloseTo(946_214.67, 2);
   });
 
   it("no cobra el impuesto al cheque cuando el plazo lo absorbe", () => {
@@ -199,6 +220,9 @@ describe("simularCheques", () => {
     expect(largo.tna_interes).toBe(72);
     expect(largo.arancel).toBe(3.5);
     expect(largo.tramo).toBe("46 días o más");
+    // El 3,5% del tramo largo también es fijo sobre el capital, igual que el 2%
+    // del corto: no se prorratea por plazo (confirmado el 14/08/2026).
+    expect(costo(largo, "Gastos bancarios")).toBe(35_000);
   });
 
   it("comitente cotiza más barato que directo en el mismo plazo", () => {
@@ -285,11 +309,14 @@ describe("simularCheques", () => {
 
 /**
  * Planilla de descuento directo del cliente (12/08/2026): capital
- * $35.990.137,04 a 42 días, 4% mensual, 2% de gastos bancarios.
+ * $35.990.137,04 vendido el 08/06 con vencimiento el viernes 17/07, 42 días,
+ * 4% mensual y 2% de gastos bancarios.
  *
- * ⚠️ La planilla arranca el 08/06 y cuenta 42 días; acá se simula desde el
- * 09/06 para llegar a los mismos 42, porque falta confirmar cómo cuenta los
- * días de acreditación fuera del mercado (ver pendientes en CLAUDE.md).
+ * Los 42 días salen de descontar desde el día de la venta hasta el lunes 20/07:
+ * fuera del mercado la acreditación es a +3 días corridos, y si cae en fin de
+ * semana o feriado se corre al siguiente hábil (regla del cliente, 14/08/2026).
+ *
+ * La pestaña "ejemplo cheque" de la hoja de tasas repite esta misma planilla.
  */
 describe("simularCheques — planilla de descuento directo", () => {
   const r = simularCheques(
@@ -300,13 +327,14 @@ describe("simularCheques — planilla de descuento directo", () => {
       instrumento: "cheque",
     },
     TASAS,
-    d("2026-06-09")
+    d("2026-06-08")
   );
   const costo = (concepto: string) =>
     r.costos.find((c) => c.concepto === concepto)?.monto ?? 0;
 
   it("cuenta los mismos 42 días", () => {
     expect(r.dias_considerados).toBe(42);
+    expect(r.fecha_acreditacion_estimada).toBe("2026-07-20");
   });
 
   it("reproduce cada línea de la planilla", () => {

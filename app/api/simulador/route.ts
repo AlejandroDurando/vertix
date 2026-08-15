@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { parseSimulador } from "@/lib/validations";
+import { fechaConcertacion, parseSimulador } from "@/lib/validations";
 import { fail, ok } from "@/lib/api-response";
 import { checkRateLimit, getClientIp, maybeCleanup } from "@/lib/rate-limit";
 import { getTasas } from "@/lib/tasas";
@@ -54,7 +54,12 @@ export async function POST(req: NextRequest) {
         return fail(evLibrador.motivo, 403, "bcra");
       }
 
-      const result = simularCheques(parsed.data, tasas);
+      // La concertación sólo llega del simulador interno; desde la web es hoy.
+      const result = simularCheques(
+        parsed.data,
+        tasas,
+        fechaConcertacion(parsed.data.concertacion)
+      );
       return ok({
         ...result,
         bcra: {

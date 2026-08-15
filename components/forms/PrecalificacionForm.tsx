@@ -17,9 +17,11 @@ import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import {
   MIN_DIAS_HABILES,
   MODALIDAD_OPCIONES,
+  PORCENTAJE_ACEPTADO_FCE,
   instrumentoSoloComitente,
   instrumentoSoloDirecto,
   modalidadRequiereMinDias,
+  valorAceptadoSugerido,
 } from "@/lib/validations";
 import {
   MSG_ABRIR_CUENTA,
@@ -64,6 +66,11 @@ export function PrecalificacionForm() {
   const [fechaPago, setFechaPago] = useState("");
   const [instrumento, setInstrumento] = useState<InstrumentoCheque>("cheque");
   const [modalidad, setModalidad] = useState<ModalidadCheque>("directo");
+  // En la FCE se negocia el valor aceptado: se precarga el 80% del total y se
+  // corrige si el comprador aceptó otro importe (igual que en el simulador).
+  const [montoTotal, setMontoTotal] = useState("");
+  const [aceptado, setAceptado] = useState("");
+  const [aceptadoEditado, setAceptadoEditado] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   // El cheque físico no se negocia en el mercado (sólo sin comitente) y la FCE
@@ -83,6 +90,13 @@ export function PrecalificacionForm() {
     () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
     []
   );
+
+  const esFce = instrumento === "fce";
+  const aceptadoSugerido = useMemo(() => {
+    const n = Number(montoTotal);
+    return Number.isFinite(n) && n > 0 ? String(valorAceptadoSugerido(n)) : "";
+  }, [montoTotal]);
+  const valorAceptado = aceptadoEditado ? aceptado : aceptadoSugerido;
   const fechaMuyCercana = exigeMinDias && fechaPago !== "" && fechaPago < minFechaPago;
 
   function changeServicio(next: Servicio) {
@@ -122,6 +136,10 @@ export function PrecalificacionForm() {
     if (res.success) {
       setSuccess(true);
       setTipoPrestamo("");
+      // Los campos controlados no los limpia form.reset().
+      setMontoTotal("");
+      setAceptado("");
+      setAceptadoEditado(false);
       formRef.current?.reset();
     } else {
       setError(res.error);
@@ -220,14 +238,34 @@ export function PrecalificacionForm() {
               />
               <Input
                 name="monto_cheque"
-                label="Monto del cheque (ARS)"
+                label={esFce ? "Valor total de la factura (ARS)" : "Monto del cheque (ARS)"}
                 required
                 type="number"
                 inputMode="decimal"
                 step="0.01"
                 min="1"
+                value={montoTotal}
+                onChange={(e) => setMontoTotal(e.target.value)}
                 error={fe("monto_cheque")}
               />
+              {esFce && (
+                <Input
+                  name="monto_aceptado"
+                  label="Valor aceptado (ARS)"
+                  required
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="1"
+                  value={valorAceptado}
+                  onChange={(e) => {
+                    setAceptadoEditado(true);
+                    setAceptado(e.target.value);
+                  }}
+                  hint={`Lo que aceptó el comprador: se calcula como el ${PORCENTAJE_ACEPTADO_FCE}% del total y se puede corregir. Es lo que se negocia.`}
+                  error={fe("monto_aceptado")}
+                />
+              )}
               <Input
                 name="fecha_pago"
                 label="Fecha de pago del cheque"

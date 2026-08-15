@@ -83,6 +83,22 @@ export function esDiaHabil(d: Date): boolean {
   return !esFinDeSemana(d) && !esFeriado(d);
 }
 
+/** Suma n días corridos a una fecha. */
+export function sumarDiasCorridos(desde: Date, n: number): Date {
+  const out = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());
+  out.setDate(out.getDate() + n);
+  return out;
+}
+
+/** La misma fecha si es hábil; si no, el próximo día hábil. */
+export function proximoDiaHabil(d: Date): Date {
+  const out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  while (!esDiaHabil(out)) {
+    out.setDate(out.getDate() + 1);
+  }
+  return out;
+}
+
 /** Suma n días hábiles a una fecha (n >= 0). */
 export function sumarDiasHabiles(desde: Date, n: number): Date {
   const out = new Date(desde.getFullYear(), desde.getMonth(), desde.getDate());

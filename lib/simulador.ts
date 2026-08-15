@@ -17,6 +17,8 @@ import {
   esDiaHabil,
   hoy,
   parseISODate,
+  proximoDiaHabil,
+  sumarDiasCorridos,
   sumarDiasHabiles,
   toISODate,
 } from "./fechas";
@@ -44,20 +46,37 @@ export const DIAS_HABILES_IMPUESTO_CHEQUE = 10;
 // La leyenda de aprobación crediticia y gastos de sellados corresponde sólo a
 // préstamos: se quitó de acá por pedido del cliente (25/07/2026).
 const DISCLAIMER_CHEQUES =
-  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (2 o 3 días hábiles posteriores a la fecha de pago), por lo que el resultado puede diferir. El desglose incluye el arancel de Vertix y los derechos e impuestos que se le cobran al vendedor según la modalidad. La tasa puede variar.";
+  "Cotización orientativa, calculada hasta la fecha estimada de acreditación (entre 1 y 3 días posteriores a la fecha de pago según el instrumento y la modalidad, corriéndose cuando cae en fin de semana o feriado), por lo que el resultado puede diferir. El desglose incluye el arancel de Vertix y los derechos e impuestos que se le cobran al vendedor según la modalidad. La tasa puede variar.";
 
 /**
  * Cuándo se cobra el valor.
  *
- * El cheque y el echeq se acreditan 2 días hábiles después de la fecha de pago
- * (3 si cae en fin de semana o feriado), verificado contra la planilla de
- * cotización. La **FCE cobra a +1 día hábil**, confirmado con un boleto real de
- * AdCap el 07/08/2026: vencimiento 14/09 (lunes) → cobro 15/09.
+ * **Fuera del mercado son 3 días corridos** después de la fecha de pago y, si
+ * ese día cae en fin de semana o feriado, se corre al siguiente hábil (regla
+ * del cliente, 14/08/2026: "que sea +3 siempre y cuando el pago no caiga
+ * feriado o fin de semana, sino se corre al siguiente hábil"). Su ejemplo: un
+ * cheque que vence el viernes 14/08 cobra el martes 18/08, porque el +3 cae en
+ * el feriado del lunes 17. La planilla de descuento directo da los mismos 42
+ * días: vencimiento el viernes 17/07 → lunes 20/07.
+ *
+ * En el mercado de capitales el cheque y el echeq se acreditan **2 días
+ * hábiles** después de la fecha de pago (3 si cae en fin de semana o feriado),
+ * verificado contra la planilla "compra CPD PESOS". La **FCE cobra a +1 día
+ * hábil**, confirmado con el boleto 348.884 de AdCap: vencimiento 14/09 (lunes)
+ * → cobro 15/09.
  */
+const DIAS_CORRIDOS_ACREDITACION_DIRECTO = 3;
+
 export function fechaAcreditacionEstimada(
   fechaPago: Date,
-  instrumento: InstrumentoCheque = "cheque"
+  instrumento: InstrumentoCheque = "cheque",
+  modalidad: ModalidadCheque = "comitente"
 ): Date {
+  if (modalidad === "directo") {
+    return proximoDiaHabil(
+      sumarDiasCorridos(fechaPago, DIAS_CORRIDOS_ACREDITACION_DIRECTO)
+    );
+  }
   const habiles = instrumento === "fce" ? 1 : 2;
   return sumarDiasHabiles(fechaPago, esDiaHabil(fechaPago) ? habiles : habiles + 1);
 }
@@ -128,19 +147,24 @@ function calcularCostos(opts: {
   const arancel =
     arancelPct > 0 ? Math.max(arancelCalculado, arancel_minimo) : 0;
 
+  // En el mercado el desglose NO muestra el reparto entre tasa y arancel: hacia
+  // afuera se informa un único porcentaje global (el 40% de la FCE, por
+  // ejemplo), aunque el cálculo se haga por separado. El reparto no siempre es
+  // el mismo y confundía al cliente (pedido del cliente, 13/08/2026). El
+  // simulador interno sí lo muestra, a partir de `tna_interes` y `arancel`.
   const costos: CostoSimulador[] = [
     {
       concepto: "Interés",
       monto: interes,
-      detalle: `${pct(tnaInteres)} TNA por ${dias} días`,
+      detalle: `descuento por ${dias} días`,
     },
     {
       concepto: "Arancel",
       monto: arancel,
       detalle:
         arancel > arancelCalculado
-          ? `mínimo de ${arancel_minimo.toLocaleString("es-AR")} (el ${pct(arancelPct)} anual daba menos)`
-          : `${pct(arancelPct)} anual por ${dias} días`,
+          ? `mínimo de ${arancel_minimo.toLocaleString("es-AR")} (el cálculo por ${dias} días daba menos)`
+          : `prorrateado por ${dias} días`,
     },
     {
       concepto: "IVA sobre el arancel",
@@ -261,7 +285,11 @@ export function simularCheques(
   // El descuento corre hasta la fecha estimada de acreditación del comprador
   // (confirmado por el cliente el 31/07/2026), y ese mismo plazo define el
   // tramo de tasa que se aplica.
-  const fechaAcreditacion = fechaAcreditacionEstimada(fechaPago, input.instrumento);
+  const fechaAcreditacion = fechaAcreditacionEstimada(
+    fechaPago,
+    input.instrumento,
+    input.modalidad
+  );
   const desde = fechaDesde(ahora, input.instrumento);
   const dias = Math.max(1, diasCalendarioEntre(desde, fechaAcreditacion));
 

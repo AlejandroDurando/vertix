@@ -20,7 +20,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const FILE_FIELDS = ["documentacion", "titulo_automotor", "constancia_cuit"];
-const NUMERIC_FIELDS = ["monto_cheque", "monto_solicitado", "plazo_meses"];
+const NUMERIC_FIELDS = [
+  "monto_cheque",
+  "monto_aceptado",
+  "monto_solicitado",
+  "plazo_meses",
+];
 
 type Parsed =
   | {

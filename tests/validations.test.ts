@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_DIAS_HABILES,
+  fechaConcertacion,
   precalificacionSchema,
   simuladorChequesSchema,
+  valorAceptadoSugerido,
 } from "@/lib/validations";
-import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
+import { esDiaHabil, hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 
 // El piso de 5 días hábiles lo exige el mercado de capitales: rige sólo con
 // cuenta comitente. Simulador y precalificación piden la modalidad, así que
@@ -43,6 +45,67 @@ const precalificacion = (over: Record<string, unknown>) =>
     cuit_endosatario: CUIT_B,
     ...over,
   });
+
+describe("fecha de concertación", () => {
+  it('por defecto es hoy', () => {
+    expect(toISODate(fechaConcertacion())).toBe(toISODate(hoy()));
+    expect(toISODate(fechaConcertacion("hoy"))).toBe(toISODate(hoy()));
+  });
+
+  it('"mañana" es el próximo día hábil, no el día siguiente', () => {
+    // Viernes 2026-01-16 → lunes 2026-01-19
+    const viernes = new Date(2026, 0, 16);
+    expect(toISODate(fechaConcertacion("manana", viernes))).toBe("2026-01-19");
+    expect(esDiaHabil(fechaConcertacion("manana", viernes))).toBe(true);
+  });
+
+  it("corre el piso de días hábiles junto con la concertación", () => {
+    // Una fecha que alcanza el mínimo desde hoy, pero no desde mañana.
+    const justo = toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES));
+    const base = { instrumento: "echeq", modalidad: "comitente", fecha_pago: justo };
+    expect(simulador(base).success).toBe(true);
+    expect(simulador({ ...base, concertacion: "manana" }).success).toBe(false);
+  });
+});
+
+describe("valor aceptado de la FCE", () => {
+  it("sugiere el 80% del total, redondeado a centavos", () => {
+    // Total del boleto 348.884 de AdCap → el aceptado que figura en el boleto.
+    expect(valorAceptadoSugerido(7_053_717.99)).toBe(5_642_974.39);
+    expect(valorAceptadoSugerido(1_000_000)).toBe(800_000);
+  });
+});
+
+describe("precalificación de FCE — valor aceptado", () => {
+  const fce = { instrumento: "fce", modalidad: "comitente" };
+
+  it("exige el valor aceptado", () => {
+    const res = precalificacion(fce);
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["monto_aceptado"]);
+    }
+  });
+
+  it("no lo deja superar el total de la factura", () => {
+    const res = precalificacion({ ...fce, monto_aceptado: 100_001 });
+    expect(res.success).toBe(false);
+  });
+
+  it("acepta el aceptado dentro del total", () => {
+    expect(precalificacion({ ...fce, monto_aceptado: 80_000 }).success).toBe(true);
+  });
+
+  // El multipart manda "" y readUploads lo convierte en 0: es "no vino".
+  it("trata el 0 y el vacío como ausente", () => {
+    const res = precalificacion({ ...fce, monto_aceptado: 0 });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues[0].path).toEqual(["monto_aceptado"]);
+    }
+    expect(precalificacion({ monto_aceptado: "" }).success).toBe(true);
+  });
+});
 
 describe("simulador de cheques — mínimo de días hábiles por modalidad", () => {
   // La cuenta comitente sólo admite echeq/FCE, así que se combina con echeq.
