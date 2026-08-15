@@ -47,6 +47,36 @@ const CONCERTACION = [
   { value: "manana", label: "Mañana (próximo día hábil)" },
 ];
 
+const CLAVE_INTERNO = "vertix:interno";
+
+/**
+ * Si el simulador está en modo interno.
+ *
+ * Viaja en la URL (`?interno=1`), pero el parámetro se pierde al navegar por el
+ * menú y alcanza un carácter de más al copiarlo —`?interno=1:`— para que no
+ * active nada, sin ninguna señal de por qué. Así que se acepta cualquier forma
+ * razonable del valor, se recuerda mientras dure la pestaña y se apaga
+ * explícitamente con `?interno=0`.
+ */
+function leerInterno(): boolean {
+  const crudo = new URLSearchParams(window.location.search).get("interno");
+  if (crudo != null) {
+    const activo = /^\s*(1|true|si|sí)\b/i.test(crudo);
+    try {
+      if (activo) sessionStorage.setItem(CLAVE_INTERNO, "1");
+      else sessionStorage.removeItem(CLAVE_INTERNO);
+    } catch {
+      // Modo privado de Safari: el flag vale sólo para esta página.
+    }
+    return activo;
+  }
+  try {
+    return sessionStorage.getItem(CLAVE_INTERNO) === "1";
+  } catch {
+    return false;
+  }
+}
+
 const ARS = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
@@ -83,7 +113,7 @@ export function SimuladorForm() {
   // Vertix—, así que la percepción de IVA se cotiza siempre. Con ?interno=1 el
   // equipo puede elegir la condición del comprador y ver el número final.
   useEffect(() => {
-    setInterno(new URLSearchParams(window.location.search).get("interno") === "1");
+    setInterno(leerInterno());
   }, []);
 
   // El cheque físico no se negocia en el mercado (sólo directo) y la FCE sólo
@@ -180,6 +210,16 @@ export function SimuladorForm() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Sin esto no había manera de saber si el modo interno quedó activo:
+          sus controles sólo aparecen en algunas combinaciones. */}
+      {interno && (
+        <div className="rounded-lg border border-vertix/20 bg-vertix/5 px-4 py-3 text-sm text-vertix">
+          <strong>Modo interno.</strong> Podés elegir la fecha de concertación y
+          la condición del comprador, y el resultado muestra el desglose de la
+          tasa. Para volver a la vista pública, abrí la misma dirección con{" "}
+          <code className="font-mono">?interno=0</code>.
+        </div>
+      )}
       <Tabs<Tipo>
         tabs={[
           { value: "cheques", label: "Descuento de cheques" },
