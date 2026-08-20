@@ -27,6 +27,8 @@ const TASAS: Tasas = {
     iva: 21,
     iva_directo: 21,
     derechos_mercado: 0.06,
+    derechos_comprador: 0.03,
+    arancel_comprador: 0,
     ingresos_brutos: 9,
     impuesto_cheque: 1.2,
     arancel_minimo: 500,
@@ -269,6 +271,46 @@ describe("simularCheques", () => {
     expect(costo(r, "IVA sobre los derechos")).toBeCloseTo(150.79, 1);
     expect(costo(r, "Percepción de IVA")).toBeCloseTo(26_026.37, 1);
     expect(r.monto_a_recibir).toBeCloseTo(4_272_141.66, 1);
+  });
+
+  // Bloque COMPRADOR de la misma planilla: valor presente + derechos (0,03%,
+  // la mitad que los del vendedor) + IVA. Total a pagar 4.308.654,32.
+  it("reproduce lo que pone el comprador", () => {
+    const tasasPlanilla: Tasas = {
+      ...TASAS,
+      cheques: {
+        ...TASAS.cheques,
+        comitente: [{ hastaDias: 30, tasa: 42, gastos: 2.5 }],
+      },
+    };
+    const r = simularCheques(
+      {
+        monto: 4_432_155,
+        fecha_pago: "2026-08-27",
+        modalidad: "comitente",
+        instrumento: "echeq",
+      },
+      tasasPlanilla,
+      d("2026-08-06")
+    );
+    const linea = (concepto: string) =>
+      r.comprador?.costos.find((c) => c.concepto === concepto)?.monto ?? 0;
+
+    expect(linea("Valor presente del cheque")).toBeCloseTo(4_308_219.91, 1);
+    expect(linea("Derechos de mercado")).toBeCloseTo(359.02, 1);
+    expect(linea("IVA sobre los derechos")).toBeCloseTo(75.39, 1);
+    expect(r.comprador?.total_a_pagar).toBeCloseTo(4_308_654.32, 1);
+    // Lo que separa el desembolso del comprador de lo que cobra el vendedor.
+    expect(r.comprador?.diferencia_con_vendedor).toBeCloseTo(36_512.66, 1);
+  });
+
+  it("fuera del mercado no hay bloque del comprador", () => {
+    const r = simularCheques(
+      { monto: 1_000_000, fecha_pago: "2026-03-16", modalidad: "directo", instrumento: "cheque" },
+      TASAS,
+      d("2026-01-05")
+    );
+    expect(r.comprador).toBeUndefined();
   });
 
   it("la FCE en comitente usa la estimación única", () => {

@@ -105,6 +105,81 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const pct = (n: number) => `${String(n).replace(".", ",")}%`;
 
 /**
+ * Interés del mercado de capitales: descuento racional, `V − V/(1 + i·d/365)`.
+ * Lo usan los dos lados del cuadro, así que vive en un solo lugar.
+ */
+function interesRacional(monto: number, tnaInteres: number, dias: number): number {
+  return monto - monto / (1 + (tnaInteres / 100) * (dias / DIAS_ANIO));
+}
+
+/**
+ * Lo que desembolsa quien compra el cheque — el bloque COMPRADOR de la planilla
+ * "compra CPD PESOS", que hasta ahora no se calculaba.
+ *
+ * Es el valor presente más los costos propios del comprador: los derechos de
+ * mercado (que son **la mitad** que los del vendedor) y el arancel de la ALyC,
+ * cada uno con su IVA. Sirve para cotizarle a un inversor externo cuánto tiene
+ * que poner, o para saber cuánto pone Vertix cuando compra con fondos propios.
+ *
+ * Sólo existe en el mercado de capitales: fuera de él no hay derechos ni ALyC,
+ * y el comprador paga exactamente lo que cobra el vendedor.
+ */
+function costosComprador(opts: {
+  monto: number;
+  dias: number;
+  tnaInteres: number;
+  instrumento: InstrumentoCheque;
+  tasas: Tasas;
+}): { costos: CostoSimulador[]; total: number } {
+  const { monto, dias, tnaInteres, instrumento, tasas } = opts;
+  const { iva, derechos_comprador, arancel_comprador } = tasas.costos;
+  // La FCE no tributa IVA en ningún concepto, tampoco del lado del comprador.
+  const ivaAplicable = instrumento === "fce" ? 0 : iva;
+
+  const bruto = monto - interesRacional(monto, tnaInteres, dias);
+  const proporcion = Math.min(dias / DIAS_DERECHOS, 1);
+  const derechos = bruto * (derechos_comprador / 100) * proporcion;
+  const arancel = monto * (arancel_comprador / 100) * (dias / DIAS_ANIO);
+
+  const costos: CostoSimulador[] = [
+    {
+      concepto: "Valor presente del cheque",
+      monto: bruto,
+      detalle: `el nominal menos el descuento de ${dias} días`,
+    },
+    {
+      concepto: "Derechos de mercado",
+      monto: derechos,
+      detalle:
+        dias < DIAS_DERECHOS
+          ? `${pct(derechos_comprador)} prorrateado a ${DIAS_DERECHOS} días`
+          : pct(derechos_comprador),
+    },
+    {
+      concepto: "IVA sobre los derechos",
+      monto: derechos * (ivaAplicable / 100),
+      detalle: pct(ivaAplicable),
+    },
+    {
+      concepto: "Arancel de la ALyC",
+      monto: arancel,
+      detalle: `${pct(arancel_comprador)} anual por ${dias} días`,
+    },
+    {
+      concepto: "IVA sobre el arancel",
+      monto: arancel * (ivaAplicable / 100),
+      detalle: pct(ivaAplicable),
+    },
+  ];
+
+  return {
+    // El valor presente siempre se muestra; los demás sólo si tienen importe.
+    costos: costos.filter((c, i) => i === 0 || c.monto > 0),
+    total: costos.reduce((total, c) => total + c.monto, 0),
+  };
+}
+
+/**
  * Desglose de lo que se le descuenta al vendedor, replicando la planilla de
  * cotización real ("compra CPD PESOS", 06/08/2026).
  *
@@ -141,7 +216,7 @@ function calcularCostos(opts: {
   // La FCE no tributa IVA en aranceles ni en derechos.
   const ivaAplicable = esFce ? 0 : iva;
 
-  const interes = monto - monto / (1 + (tnaInteres / 100) * (dias / DIAS_ANIO));
+  const interes = interesRacional(monto, tnaInteres, dias);
   const bruto = monto - interes;
 
   // Piso del arancel: si el cálculo da menos, la ALyC cobra el mínimo igual.
@@ -331,6 +406,13 @@ export function simularCheques(
   const descuento = costos.reduce((total, c) => total + c.monto, 0);
   const monto_a_recibir = monto - descuento;
 
+  // Fuera del mercado no hay derechos ni ALyC: el comprador paga exactamente lo
+  // que cobra el vendedor, así que no hay nada que desglosar aparte.
+  const comprador =
+    input.modalidad === "comitente"
+      ? costosComprador({ monto, dias, tnaInteres, instrumento: input.instrumento, tasas })
+      : null;
+
   return {
     monto_negociado: round2(monto),
     monto_a_recibir: round2(monto_a_recibir),
@@ -349,6 +431,15 @@ export function simularCheques(
     // calculada arriba es la del comprador.
     fecha_acreditacion_vendedor: toISODate(ahora),
     disclaimer: DISCLAIMER_CHEQUES,
+    ...(comprador
+      ? {
+          comprador: {
+            costos: comprador.costos.map((c) => ({ ...c, monto: round2(c.monto) })),
+            total_a_pagar: round2(comprador.total),
+            diferencia_con_vendedor: round2(comprador.total - monto_a_recibir),
+          },
+        }
+      : {}),
   };
 }
 

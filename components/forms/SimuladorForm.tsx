@@ -517,6 +517,44 @@ function ChequesResultCard({
         ))}
       </div>
 
+      {/* Lo que pone quien compra el cheque: a veces Vertix, a veces un inversor
+          externo al que hay que decirle cuánto necesita para entrar. Sale del
+          bloque COMPRADOR de la planilla y sólo se muestra en el interno. */}
+      {interno && data.comprador && (
+        <div className="mt-6 rounded-lg border border-vertix/20 bg-white p-4">
+          <h4 className="mb-1 text-sm font-semibold uppercase tracking-wide text-vertix/60">
+            Lo que paga el comprador
+          </h4>
+          <div className="divide-y divide-vertix/10">
+            {data.comprador.costos.map((c) => (
+              <div
+                key={c.concepto}
+                className="flex items-baseline justify-between gap-4 py-1.5"
+              >
+                <span className="text-sm text-vertix/60">
+                  {c.concepto}
+                  {c.detalle && (
+                    <span className="block text-xs text-vertix/40">{c.detalle}</span>
+                  )}
+                </span>
+                <span className="whitespace-nowrap text-base font-semibold tabular-nums text-vertix">
+                  {ARS.format(c.monto)}
+                </span>
+              </div>
+            ))}
+            <Row
+              label="Total a desembolsar"
+              value={ARS.format(data.comprador.total_a_pagar)}
+            />
+          </div>
+          <p className="mt-3 text-xs text-vertix/60">
+            Entre lo que pone el comprador y lo que cobra el vendedor hay{" "}
+            <strong>{ARS.format(data.comprador.diferencia_con_vendedor)}</strong> de
+            aranceles, derechos e impuestos.
+          </p>
+        </div>
+      )}
+
       {data.incluye_percepcion && (
         <p className="mt-3 text-xs text-vertix/60">
           Incluye la percepción de IVA, que se cobra cuando el comprador es

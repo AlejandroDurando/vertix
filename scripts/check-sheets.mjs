@@ -161,6 +161,8 @@ for (const [etiqueta, clave, def, unidad] of [
   ["IVA", "iva", 21, "%"],
   ["IVA fuera del mercado", "iva_directo", 21, "%"],
   ["derechos de mercado", "derechos_mercado", 0.06, "%"],
+  ["derechos del comprador", "derechos_comprador", 0.03, "%"],
+  ["arancel del comprador", "arancel_comprador", 0, "%"],
   ["ingresos brutos", "ingresos_brutos", 9, "%"],
   ["impuesto al cheque", "impuesto_cheque", 1.2, "%"],
   ["arancel minimo", "arancel_minimo", 500, " $"],

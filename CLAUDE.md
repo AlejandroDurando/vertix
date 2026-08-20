@@ -14,7 +14,7 @@ npm run dev          # desarrollo (localhost:3000)
 npm run build        # build de producción
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
-npm test             # vitest run — 142 tests
+npm test             # vitest run — 144 tests
 npm run check:sheets # verifica credenciales + tasas leídas de la hoja
 ```
 
@@ -132,7 +132,8 @@ del pagador de la factura) y su 40% se descompone en **28% de tasa + 12% de aran
 (verificado contra el boleto 348.884 de AdCap el 07/08/2026). Cada tramo son **dos filas en la
 hoja** (tasa y gastos) para poder ajustar una sin la otra; `tramoParaOperacion()` en `lib/tasas.ts`
 elige cuál aplica. Los costos del vendedor (`iva` 21, `iva_directo` 21, `derechos_mercado` 0,06,
-`ingresos_brutos` 9, `impuesto_cheque` 1,2, `arancel_minimo` 500) son seis filas más, **opcionales**: si faltan se usan
+`derechos_comprador` 0,03, `arancel_comprador` 0, `ingresos_brutos` 9, `impuesto_cheque` 1,2,
+`arancel_minimo` 500) son ocho filas más, **opcionales**: si faltan se usan
 esos mismos valores por defecto. `gastos_comitente_fce` también es opcional. **El cache de la hoja
 es de 1 minuto** (era de 1 hora hasta el 07/08/2026): los dueños ajustan tasas varias veces por
 semana y necesitan verlo enseguida. **El plazo que define el tramo es el mismo que se usa para el descuento**: días hasta
@@ -283,6 +284,18 @@ así que se informa sólo la tasa de descuento y los gastos van en el detalle, e
 (Responsable Inscripto) y se saca en la cotización real si es monotributista o consumidor final.
 Con `?interno=1` el simulador muestra un selector para elegir esa condición — es sólo un parámetro
 en la URL, sin login: no expone nada que no se pueda deducir cotizando.
+
+**El simulador interno muestra también lo que paga el comprador.** La planilla *compra CPD PESOS*
+tiene dos bloques rotulados COMPRADOR y VENDEDOR; hasta ahora sólo se calculaba el del vendedor. El
+del comprador es el valor presente más **sus** derechos de mercado —que son **0,03%, la mitad que los
+del vendedor** (`derechos_comprador`)— y el arancel de la ALyC (`arancel_comprador`, hoy en 0 porque
+esa celda está vacía en la planilla), cada uno con su IVA. Sirve para decirle a un inversor externo
+cuánto tiene que poner, y para saber cuánto pone Vertix cuando compra con fondos propios (pedido del
+cliente, 19/08/2026). `costosComprador()` en `lib/simulador.ts`; se devuelve en `comprador` y el
+simulador lo muestra sólo con `?interno=1`. **Sólo existe en el mercado de capitales**: fuera de él
+no hay derechos ni ALyC y el comprador paga exactamente lo que cobra el vendedor. Verificado contra
+la fila 7 de la planilla: el comprador pone $4.308.654,32, el vendedor cobra $4.272.141,66 y la
+diferencia son $36.512,66 de aranceles, derechos e impuestos.
 
 **El simulador interno también puede concertar mañana.** Muchos clientes deciden vender al día
 siguiente y hay que reprogramar la liquidación (pedido del cliente, 13/08/2026), así que con

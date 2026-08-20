@@ -64,6 +64,10 @@ export type CostosOperacion = {
   iva_directo: number;
   /** Derechos de mercado del vendedor, prorrateados sobre 90 días. */
   derechos_mercado: number;
+  /** Derechos de mercado del **comprador**: la mitad que los del vendedor. */
+  derechos_comprador: number;
+  /** Arancel que la ALyC le cobra al comprador. Hoy en 0 en la planilla. */
+  arancel_comprador: number;
   /** Ingresos Brutos sobre el interés, sólo fuera del mercado de capitales. */
   ingresos_brutos: number;
   /** Impuesto al cheque, sobre el valor nominal (sólo fuera del mercado). */
@@ -144,8 +148,22 @@ export type SimuladorChequesOutput = {
   fecha_acreditacion_estimada: string; // YYYY-MM-DD (fecha_pago + 2/3 hábiles)
   fecha_acreditacion_vendedor: string; // YYYY-MM-DD (día de la simulación)
   disclaimer: string;
+  /**
+   * Lo que tiene que poner quien compra el cheque, que a veces es Vertix y a
+   * veces un inversor externo. Es el bloque COMPRADOR de la planilla y sólo
+   * existe en el mercado de capitales; el simulador público no lo muestra.
+   */
+  comprador?: CotizacionComprador;
   // Verificación BCRA de los CUIT cargados (siempre presente).
   bcra?: { librador: BcraInfo; endosatario: BcraInfo };
+};
+
+export type CotizacionComprador = {
+  costos: CostoSimulador[];
+  /** Lo que desembolsa el comprador. */
+  total_a_pagar: number;
+  /** Lo que separa ese desembolso de lo que termina cobrando el vendedor. */
+  diferencia_con_vendedor: number;
 };
 
 // --- Simulador: préstamos ---

@@ -31,6 +31,10 @@ const COSTOS_POR_DEFECTO: CostosOperacion = {
   iva: 21,
   iva_directo: 21,
   derechos_mercado: 0.06,
+  // El comprador paga la mitad de derechos que el vendedor, y hoy la planilla
+  // no le cobra arancel de la ALyC (la celda de la tasa está vacía).
+  derechos_comprador: 0.03,
+  arancel_comprador: 0,
   ingresos_brutos: 9,
   impuesto_cheque: 1.2,
   arancel_minimo: 500,
@@ -115,6 +119,8 @@ const CLAVES_COSTOS: Record<keyof CostosOperacion, string> = {
   iva: "iva",
   iva_directo: "iva_directo",
   derechos_mercado: "derechos_mercado",
+  derechos_comprador: "derechos_comprador",
+  arancel_comprador: "arancel_comprador",
   ingresos_brutos: "ingresos_brutos",
   impuesto_cheque: "impuesto_cheque",
   arancel_minimo: "arancel_minimo",
