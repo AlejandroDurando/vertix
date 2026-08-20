@@ -15,6 +15,7 @@ import {
   PLAZO_MAX_MESES,
   PORCENTAJE_ACEPTADO_FCE,
   fechaConcertacion,
+  fechaPagoMinima,
   instrumentoSoloComitente,
   instrumentoSoloDirecto,
   modalidadRequiereMinDias,
@@ -133,10 +134,7 @@ export function SimuladorForm() {
   // Se cuenta desde el día en que se concierta, que puede ser mañana.
   const exigeMinDias = modalidadRequiereMinDias(modalidadEfectiva);
   const minFechaPago = useMemo(
-    () =>
-      toISODate(
-        sumarDiasHabiles(fechaConcertacion(concertacion), MIN_DIAS_HABILES)
-      ),
+    () => toISODate(fechaPagoMinima(fechaConcertacion(concertacion))),
     [concertacion]
   );
 
@@ -269,7 +267,7 @@ export function SimuladorForm() {
                     setAceptadoEditado(true);
                     setAceptado(e.target.value);
                   }}
-                  hint={`Calculado como el ${PORCENTAJE_ACEPTADO_FCE}% del total de la factura. Si el comprador aceptó otro importe, corregilo.`}
+                  hint={`Calculado como el ${PORCENTAJE_ACEPTADO_FCE}% del total de la factura. Si el saldo aceptado es otro, colocá el correspondiente.`}
                   error={fe("monto_aceptado")}
                 />
               )}
@@ -314,7 +312,7 @@ export function SimuladorForm() {
                 required
                 hint={
                   exigeMinDias
-                    ? `Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy (lo exige el mercado de capitales).`
+                    ? `Mínimo ${MIN_DIAS_HABILES} días hábiles contando hoy (lo exige el mercado de capitales).`
                     : undefined
                 }
                 onChange={(e) => setFechaPago(e.target.value)}

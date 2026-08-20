@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { esCuitValido, normalizarCuit } from "./cuit";
-import { diasHabilesEntre, hoy, parseISODate, sumarDiasHabiles } from "./fechas";
+import {
+  esDiaHabil,
+  hoy,
+  parseISODate,
+  sumarDiasHabiles,
+} from "./fechas";
 import type { InstrumentoCheque, ModalidadCheque } from "@/types";
 
 /** Plazo máximo de un préstamo: más que eso no se toma (cliente, 19/08/2026). */
@@ -70,11 +75,27 @@ export const MSG_CHEQUE_SOLO_DIRECTO =
 export const MSG_FCE_SOLO_COMITENTE =
   "La FCE se negocia únicamente en el mercado de capitales, con cuenta comitente. Elegí esa modalidad o cambiá el instrumento.";
 
-export function cumpleMinDiasHabiles(fechaISO: string, ahora: Date = hoy()): boolean {
-  return diasHabilesEntre(ahora, parseISODate(fechaISO)) >= MIN_DIAS_HABILES;
+/**
+ * Vencimiento más cercano que se puede tomar con cuenta comitente.
+ *
+ * Los 5 días hábiles se cuentan **incluyendo el día de la operación** (cliente,
+ * 19/08/2026: "si hoy vendiéramos un cheque el vencimiento mínimo debería ser
+ * 25/8, son 5 días hábiles contemplando hoy" — dicho un miércoles 19). Antes se
+ * contaban a partir del día siguiente y el simulador exigía un día de más, así
+ * que rechazaba operaciones que sí se pueden hacer.
+ *
+ * Si el día de la operación no es hábil no cuenta, y los 5 salen enteros de los
+ * días siguientes.
+ */
+export function fechaPagoMinima(ahora: Date = hoy()): Date {
+  return sumarDiasHabiles(ahora, MIN_DIAS_HABILES - (esDiaHabil(ahora) ? 1 : 0));
 }
 
-export const MSG_MIN_DIAS_COMITENTE = `Con cuenta comitente no podemos tomar valores con vencimiento menor a ${MIN_DIAS_HABILES} días hábiles. Elegí "Sin cuenta comitente en el mercado de capitales" o comunicate con nosotros para ver otra manera de negociación.`;
+export function cumpleMinDiasHabiles(fechaISO: string, ahora: Date = hoy()): boolean {
+  return parseISODate(fechaISO) >= fechaPagoMinima(ahora);
+}
+
+export const MSG_MIN_DIAS_COMITENTE = `Con cuenta comitente no podemos tomar valores con vencimiento a menos de ${MIN_DIAS_HABILES} días hábiles, contando el día de la operación. Elegí "Sin cuenta comitente en el mercado de capitales" o comunicate con nosotros para ver otra manera de negociación.`;
 
 const trimmed = (max: number, min = 1) =>
   z.string().trim().min(min).max(max);

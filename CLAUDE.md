@@ -14,7 +14,7 @@ npm run dev          # desarrollo (localhost:3000)
 npm run build        # build de producción
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
-npm test             # vitest run — 139 tests
+npm test             # vitest run — 142 tests
 npm run check:sheets # verifica credenciales + tasas leídas de la hoja
 ```
 
@@ -179,6 +179,14 @@ endosatario se informa siempre como "requiere análisis previo" (`infoBcra(..., 
 true })`) y nunca traba la cotización. Situación 2 o cheques rechazados advierte; si el BCRA no
 responde se permite continuar (no frenar a un cliente legítimo por una caída del servicio).
 
+**Los 5 días hábiles del mínimo se cuentan incluyendo el día de la operación** (cliente,
+19/08/2026: "si hoy vendiéramos un cheque el vencimiento mínimo debería ser 25/8, son 5 días hábiles
+contemplando hoy" — dicho un miércoles 19). Antes se contaban desde el día siguiente y el simulador
+exigía un día de más, rechazando operaciones que sí se pueden hacer. `fechaPagoMinima()` en
+`lib/validations.ts` devuelve ese vencimiento más cercano y lo usan tanto la validación del server
+como el `min` del input date; si el día de la operación no es hábil, no cuenta y los 5 salen enteros
+de los días siguientes.
+
 **El mínimo de 5 días hábiles de vencimiento sólo rige en el mercado de capitales.** Por fuera se
 pueden comprar valores con menor plazo, así que la regla depende de la modalidad: bloquea sólo
 `comitente`. **Simulador y precalificación piden la modalidad** (la precalificación desde el
@@ -202,8 +210,8 @@ fechas); lo de la FCE, contra el boleto 348.884 de AdCap: concertación 10/08, l
 vencimiento 14/09 (lunes), cobro 15/09 = **35 días**.
 
 **Que el cheque cuente desde el día de la operación y no desde la liquidación está confirmado**
-(14/08/2026: "los cheques tomalos como en la planilla, replicá eso porque así da bien el boleto").
-La liquidación a 24hs es sólo de la FCE.
+(14/08/2026: "los cheques tomalos como en la planilla, replicá eso porque así da bien el boleto") y
+re-confirmado el 19/08/2026 ("es así tal cual como decís"). La liquidación a 24hs es sólo de la FCE.
 
 **Fuera del mercado son 3 días corridos, no días hábiles** (14/08/2026): "que sea +3 siempre y
 cuando el pago no caiga feriado o fin de semana, sino se corre al siguiente hábil". Su ejemplo: un
@@ -259,7 +267,8 @@ los dos importes (`monto` / `monto_cheque` = total de la factura, `monto_aceptad
 el comprador) y se cotiza sobre el aceptado, que es lo que figura como nominal en el boleto.
 `monto_negociado` en la respuesta dice cuál se usó. **El aceptado se precarga con el 80%**
 (`PORCENTAJE_ACEPTADO_FCE` en `lib/validations.ts`) porque es lo habitual, pero se puede corregir:
-en cuanto se toca el campo deja de recalcularse solo. La precalificación lo pide desde el
+en cuanto se toca el campo deja de recalcularse solo. La leyenda no nombra al comprador, que en ese
+momento todavía no existe (pedido del cliente, 19/08/2026). La precalificación lo pide desde el
 13/08/2026 para que el lead llegue con el dato de la operación real.
 
 **Hacia afuera se informa una sola tasa: la global.** En el mercado el resultado muestra
@@ -290,7 +299,7 @@ rechaza en simulador y precalificación.
 | Integración | Estado |
 |---|---|
 | **Google Sheets — tasas** | Activo. `GOOGLE_SHEETS_ID`, pestaña `tasas`. La service account **ya es Editor** acá (lo era sólo Lector hasta el 06/08/2026): se puede escribir por API pidiendo el scope `spreadsheets` en vez de `spreadsheets.readonly`. La app igual lee con el scope de sólo lectura. |
-| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `Precalificacion!R` = modalidad, `Precalificacion!S` = monto_aceptado (FCE), `AltasPF!Y` = régimen simplificado, `AltasPJ!AB` = tiene_eecc. Todos los encabezados están escritos y coinciden con el orden de `sheets-crm.ts` (verificado el 06/08/2026); al agregar una columna, escribir también su encabezado. ⚠️ Falta escribir a mano el encabezado de `Precalificacion!S1` (agregada el 13/08/2026). |
+| **Google Sheets — CRM** | Activo. `GOOGLE_SHEETS_CRM_ID`, pestañas `Contacto`, `Precalificacion`, `AltasPF`, `AltasPJ`. Acá la service account **sí es Editor**. Las columnas nuevas se agregan **al final** para no correr las filas ya cargadas: `Precalificacion!Q` = instrumento, `Precalificacion!R` = modalidad, `Precalificacion!S` = monto_aceptado (FCE), `AltasPF!Y` = régimen simplificado, `AltasPJ!AB` = tiene_eecc. Todos los encabezados están escritos y coinciden con el orden de `sheets-crm.ts` (verificado el 06/08/2026); al agregar una columna, escribir también su encabezado. El encabezado de `Precalificacion!S1` (`monto_aceptado`) ya está escrito (19/08/2026). |
 | **Resend (email)** | Activo para la casilla interna. Los emails de confirmación al solicitante **no llegan a externos** hasta verificar el dominio `vertix.com.ar` en Resend (DNS). La API devuelve `confirmacion_enviada` para chequearlo. |
 | **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
 | **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |

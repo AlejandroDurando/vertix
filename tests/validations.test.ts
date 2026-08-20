@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_DIAS_HABILES,
+  cumpleMinDiasHabiles,
   fechaConcertacion,
+  fechaPagoMinima,
   precalificacionSchema,
   simuladorChequesSchema,
   valorAceptadoSugerido,
@@ -46,6 +48,29 @@ const precalificacion = (over: Record<string, unknown>) =>
     ...over,
   });
 
+describe("mínimo de días hábiles — se cuenta el día de la operación", () => {
+  const miercoles = new Date(2026, 7, 19); // miércoles 19/08/2026
+
+  it("el vencimiento más cercano es el 5º día hábil contando hoy", () => {
+    // Ejemplo del cliente: vendiendo el miércoles 19/08, el mínimo es el 25/08.
+    expect(toISODate(fechaPagoMinima(miercoles))).toBe("2026-08-25");
+    expect(cumpleMinDiasHabiles("2026-08-25", miercoles)).toBe(true);
+    expect(cumpleMinDiasHabiles("2026-08-24", miercoles)).toBe(false);
+  });
+
+  it("saltea el feriado del medio", () => {
+    // Martes 07/07 con el feriado del jueves 09: el mínimo cae el martes 14.
+    expect(toISODate(fechaPagoMinima(new Date(2026, 6, 7)))).toBe("2026-07-14");
+    // El cheque real de esa venta vencía el 15/07 y entraba con un día de sobra.
+    expect(cumpleMinDiasHabiles("2026-07-15", new Date(2026, 6, 7))).toBe(true);
+  });
+
+  it("si el día de la operación no es hábil, los 5 salen de los días siguientes", () => {
+    // Sábado 22/08 → lunes 24 es el 1º hábil, el 5º es el viernes 28.
+    expect(toISODate(fechaPagoMinima(new Date(2026, 7, 22)))).toBe("2026-08-28");
+  });
+});
+
 describe("fecha de concertación", () => {
   it('por defecto es hoy', () => {
     expect(toISODate(fechaConcertacion())).toBe(toISODate(hoy()));
@@ -60,8 +85,8 @@ describe("fecha de concertación", () => {
   });
 
   it("corre el piso de días hábiles junto con la concertación", () => {
-    // Una fecha que alcanza el mínimo desde hoy, pero no desde mañana.
-    const justo = toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES));
+    // El vencimiento más cercano que se puede tomar hoy: desde mañana ya no llega.
+    const justo = toISODate(fechaPagoMinima(hoy()));
     const base = { instrumento: "echeq", modalidad: "comitente", fecha_pago: justo };
     expect(simulador(base).success).toBe(true);
     expect(simulador({ ...base, concertacion: "manana" }).success).toBe(false);

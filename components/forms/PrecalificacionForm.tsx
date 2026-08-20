@@ -19,6 +19,7 @@ import {
   MODALIDAD_OPCIONES,
   PLAZO_MAX_MESES,
   PORCENTAJE_ACEPTADO_FCE,
+  fechaPagoMinima,
   instrumentoSoloComitente,
   instrumentoSoloDirecto,
   modalidadRequiereMinDias,
@@ -87,10 +88,7 @@ export function PrecalificacionForm() {
   // Los 5 días hábiles los exige el mercado de capitales: rigen sólo con
   // cuenta comitente, igual que en el simulador.
   const exigeMinDias = modalidadRequiereMinDias(modalidadEfectiva);
-  const minFechaPago = useMemo(
-    () => toISODate(sumarDiasHabiles(hoy(), MIN_DIAS_HABILES)),
-    []
-  );
+  const minFechaPago = useMemo(() => toISODate(fechaPagoMinima()), []);
 
   const esFce = instrumento === "fce";
   const aceptadoSugerido = useMemo(() => {
@@ -263,7 +261,7 @@ export function PrecalificacionForm() {
                     setAceptadoEditado(true);
                     setAceptado(e.target.value);
                   }}
-                  hint={`Lo que aceptó el comprador: se calcula como el ${PORCENTAJE_ACEPTADO_FCE}% del total y se puede corregir. Es lo que se negocia.`}
+                  hint={`Es lo que se negocia. Se calcula como el ${PORCENTAJE_ACEPTADO_FCE}% del total; si el saldo aceptado es otro, colocá el correspondiente.`}
                   error={fe("monto_aceptado")}
                 />
               )}
@@ -275,7 +273,7 @@ export function PrecalificacionForm() {
                 min={exigeMinDias ? minFechaPago : undefined}
                 hint={
                   exigeMinDias
-                    ? `Mínimo ${MIN_DIAS_HABILES} días hábiles desde hoy (lo exige el mercado de capitales).`
+                    ? `Mínimo ${MIN_DIAS_HABILES} días hábiles contando hoy (lo exige el mercado de capitales).`
                     : undefined
                 }
                 onChange={(e) => setFechaPago(e.target.value)}
