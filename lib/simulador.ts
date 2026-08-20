@@ -93,8 +93,11 @@ function fechaDesde(ahora: Date, instrumento: InstrumentoCheque): Date {
   return instrumento === "fce" ? sumarDiasHabiles(ahora, 1) : ahora;
 }
 
+// El cuadro se arma por sistema francés, pero lo que se cobra son cuotas todas
+// iguales: el total (capital + intereses + IVA sobre los intereses) repartido en
+// partes iguales. Confirmado con la planilla de una prenda real (19/08/2026).
 const DISCLAIMER_PRESTAMOS =
-  "Cotización orientativa. La tasa final depende de la evaluación crediticia del solicitante y de condiciones de mercado (tasas de caución e intereses bancarios), por eso se muestra un rango. No incluye impuestos ni otros gastos propios del crédito a otorgar (sellados, certificación de firmas, etc.). El otorgamiento depende de aprobación crediticia.";
+  "Cotización orientativa. Todas las cuotas son iguales: el total del crédito —capital, intereses e IVA sobre los intereses— se reparte en partes iguales a lo largo del plazo. La tasa final depende de la evaluación crediticia del solicitante y de condiciones de mercado (tasas de caución e intereses bancarios), por eso se muestra un rango. No incluye seguros, gastos de otorgamiento, sellados ni certificación de firmas. El otorgamiento depende de aprobación crediticia.";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -359,9 +362,15 @@ export function simularPrestamo(
   const tnaHasta = Math.max(tasas.prestamos_ph, tasas.prestamos_pj);
 
   const escenario = (tna: number) => {
-    const cuota = cuotaSistemaFrances(input.monto, tna / 100 / 12, input.plazo_meses);
-    const total = cuota * input.plazo_meses;
-    return { cuota, total, intereses: total - input.monto };
+    const { intereses, iva } = totalesSistemaFrances(
+      input.monto,
+      tna / 100 / 12,
+      input.plazo_meses,
+      tasas.costos.iva / 100
+    );
+    const total = input.monto + intereses + iva;
+    // Todas las cuotas son iguales: el total se reparte en partes iguales.
+    return { cuota: total / input.plazo_meses, total, intereses, iva };
   };
 
   const desde = escenario(tnaDesde);
@@ -374,10 +383,36 @@ export function simularPrestamo(
     total_a_pagar_hasta: round2(hasta.total),
     total_intereses_desde: round2(desde.intereses),
     total_intereses_hasta: round2(hasta.intereses),
+    total_iva_desde: round2(desde.iva),
+    total_iva_hasta: round2(hasta.iva),
     tna_desde: tnaDesde,
     tna_hasta: tnaHasta,
     disclaimer: DISCLAIMER_PRESTAMOS,
   };
+}
+
+/**
+ * Totales del cuadro de marcha del sistema francés.
+ *
+ * Se recorre cuota por cuota porque lo que se cobra no es la cuota francesa
+ * sino el total repartido en partes iguales, y para eso hace falta la suma de
+ * los intereses de todo el plazo (que en el sistema francés van bajando).
+ */
+export function totalesSistemaFrances(
+  monto: number,
+  tasaMensual: number,
+  plazoMeses: number,
+  ivaSobreInteres: number
+): { cuotaPura: number; intereses: number; iva: number } {
+  const cuotaPura = cuotaSistemaFrances(monto, tasaMensual, plazoMeses);
+  let saldo = monto;
+  let intereses = 0;
+  for (let mes = 0; mes < plazoMeses; mes++) {
+    const interes = saldo * tasaMensual;
+    intereses += interes;
+    saldo -= cuotaPura - interes;
+  }
+  return { cuotaPura, intereses, iva: intereses * ivaSobreInteres };
 }
 
 export function cuotaSistemaFrances(

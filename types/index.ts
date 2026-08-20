@@ -159,12 +159,16 @@ export type SimuladorPrestamosInput = {
 };
 
 export type SimuladorPrestamosOutput = {
+  /** Cuota fija: el total repartido en partes iguales, IVA incluido. */
   cuota_mensual_desde: number;
   cuota_mensual_hasta: number;
   total_a_pagar_desde: number;
   total_a_pagar_hasta: number;
   total_intereses_desde: number;
   total_intereses_hasta: number;
+  /** IVA sobre los intereses (21%), que también se reparte en las cuotas. */
+  total_iva_desde: number;
+  total_iva_hasta: number;
   tna_desde: number; // % anual
   tna_hasta: number; // % anual
   disclaimer: string;

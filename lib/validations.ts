@@ -3,6 +3,9 @@ import { esCuitValido, normalizarCuit } from "./cuit";
 import { diasHabilesEntre, hoy, parseISODate, sumarDiasHabiles } from "./fechas";
 import type { InstrumentoCheque, ModalidadCheque } from "@/types";
 
+/** Plazo máximo de un préstamo: más que eso no se toma (cliente, 19/08/2026). */
+export const PLAZO_MAX_MESES = 24;
+
 /** Días hábiles mínimos entre hoy y la fecha de pago del cheque. */
 export const MIN_DIAS_HABILES = 5;
 
@@ -158,7 +161,7 @@ export const precalificacionPrestamosSchema = z.object({
     .number({ invalid_type_error: "Plazo inválido" })
     .int("El plazo debe ser un número entero")
     .min(1, "El plazo mínimo es 1 mes")
-    .max(120, "El plazo máximo es 120 meses"),
+    .max(PLAZO_MAX_MESES, `El plazo máximo es ${PLAZO_MAX_MESES} meses`),
   tipo_ingreso: z.enum(["relacion_dependencia", "monotributo", "empresa"]),
 });
 
@@ -318,7 +321,7 @@ export const simuladorPrestamosSchema = z.object({
     .number({ invalid_type_error: "Plazo inválido" })
     .int("El plazo debe ser un número entero")
     .min(1, "El plazo mínimo es 1 mes")
-    .max(120, "El plazo máximo es 120 meses"),
+    .max(PLAZO_MAX_MESES, `El plazo máximo es ${PLAZO_MAX_MESES} meses`),
 });
 
 export type SimuladorInput =

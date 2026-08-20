@@ -38,6 +38,8 @@ next-env.d.ts
 
 # documentos del cliente (no versionar)
 *.docx
+*.xlsx
+*.xls
 # excepción: este va al deploy porque el alta lo ofrece para descargar
 !public/documentos/*.docx
 

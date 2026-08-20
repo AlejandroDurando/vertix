@@ -4,6 +4,7 @@ import {
   fechaAcreditacionEstimada,
   simularCheques,
   simularPrestamo,
+  totalesSistemaFrances,
 } from "@/lib/simulador";
 import { parseISODate, toISODate } from "@/lib/fechas";
 import type { Tasas } from "@/types";
@@ -415,6 +416,34 @@ describe("cuotaSistemaFrances", () => {
   });
 });
 
+/**
+ * Prenda real de julio de 2026 ("Cuadro Cálculo Cuota Ramirez"): capital
+ * $7.500.000 a 12 meses, TNA 82% (TEM 6,8333%), IVA 21% sobre los intereses.
+ *
+ * El cuadro de la izquierda de la planilla es sistema francés; el de la derecha
+ * —lo que se cobra— reparte ese total en cuotas todas iguales.
+ */
+describe("simularPrestamo — planilla de la prenda Ramirez", () => {
+  const TASAS_PRENDA: Tasas = { ...TASAS, prestamos_ph: 82, prestamos_pj: 82 };
+  const r = simularPrestamo({ monto: 7_500_000, plazo_meses: 12 }, TASAS_PRENDA);
+
+  it("reproduce los totales del cuadro francés", () => {
+    expect(r.total_intereses_desde).toBeCloseTo(3_730_741.12, 1);
+    expect(r.total_iva_desde).toBeCloseTo(783_455.64, 1);
+    expect(r.total_a_pagar_desde).toBeCloseTo(12_014_196.76, 1);
+  });
+
+  it("cobra todas las cuotas iguales, no la cuota francesa", () => {
+    expect(r.cuota_mensual_desde).toBeCloseTo(1_001_183.06, 1);
+    // La cuota pura del sistema francés es otra cosa y no es lo que se paga.
+    expect(totalesSistemaFrances(7_500_000, 0.82 / 12, 12, 0.21).cuotaPura).toBeCloseTo(
+      935_895.09,
+      1
+    );
+    expect(r.cuota_mensual_desde * 12).toBeCloseTo(r.total_a_pagar_desde, 1);
+  });
+});
+
 describe("simularPrestamo", () => {
   it("cotiza el rango entre las dos tasas de la hoja", () => {
     const r = simularPrestamo({ monto: 1_000_000, plazo_meses: 12 }, TASAS);
@@ -436,6 +465,11 @@ describe("simularPrestamo", () => {
     const r = simularPrestamo({ monto: 500_000, plazo_meses: 6 }, TASAS);
     expect(r.total_a_pagar_desde).toBeCloseTo(r.cuota_mensual_desde * 6, 1);
     expect(r.total_a_pagar_hasta).toBeCloseTo(r.cuota_mensual_hasta * 6, 1);
-    expect(r.total_intereses_desde).toBeCloseTo(r.total_a_pagar_desde - 500_000, 1);
+    // El total ahora es capital + intereses + IVA sobre los intereses.
+    expect(r.total_intereses_desde + r.total_iva_desde).toBeCloseTo(
+      r.total_a_pagar_desde - 500_000,
+      1
+    );
+    expect(r.total_iva_desde).toBeCloseTo(r.total_intereses_desde * 0.21, 1);
   });
 });

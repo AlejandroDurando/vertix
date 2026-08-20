@@ -14,7 +14,7 @@ npm run dev          # desarrollo (localhost:3000)
 npm run build        # build de producción
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
-npm test             # vitest run — 137 tests
+npm test             # vitest run — 139 tests
 npm run check:sheets # verifica credenciales + tasas leídas de la hoja
 ```
 
@@ -142,6 +142,30 @@ la acreditación del comprador. El resultado desglosa tasa, gastos, total y el t
 (cauciones, bancos), no del tipo de persona — dar una cuota exacta sería precisión falsa. Se cotiza
 entre `prestamos_ph` y `prestamos_pj` como extremos (el código los ordena solo). Por eso el
 simulador ya **no** pide tipo de persona; la precalificación sí lo pide, como dato del lead.
+
+**El préstamo se arma por sistema francés pero se cobra en cuotas iguales.** Se recorre el cuadro
+de marcha francés para sumar los intereses de todo el plazo, se le agrega el **IVA del 21% sobre los
+intereses**, y ese total —capital + intereses + IVA— se reparte en **cuotas todas iguales**
+(`totalesSistemaFrances()` en `lib/simulador.ts`). La cuota francesa, que va bajando, no es lo que
+se paga: queda sólo como paso intermedio. Verificado al centavo contra la planilla de una prenda
+real de julio de 2026 ("Cuadro Cálculo Cuota Ramirez", cliente 19/08/2026): capital $7.500.000 a 12
+meses con TNA 82% → interés $3.730.741,12, IVA $783.455,64, total $12.014.196,76 y **cuota fija
+$1.001.183,06** (la francesa daba $935.895,09). Hay un test que reproduce esas cinco cifras.
+
+⚠️ El IVA sobre los intereses **no se cobraba antes**: el simulador devolvía la cuota francesa pelada,
+que en el ejemplo quedaba $783.455 por debajo del total real (un 7%, y $65.288 por mes en la cuota).
+
+**El plazo máximo de un préstamo es de 24 meses** ("más que eso no tomamos", cliente 19/08/2026):
+`PLAZO_MAX_MESES` en `lib/validations.ts`, compartido por el simulador y la precalificación (antes
+eran 120).
+
+En la planilla del cliente hay tres cosas cargadas que **no** entran en la cuota y por eso no se
+implementaron: el seguro de vida (0,1% para persona física) y el seguro del bien están en cero y sin
+fórmula en el cuadro, el "premio anual del seguro del bien a prendar" ($81.861) no lo referencia
+ninguna celda, y los gastos de otorgamiento van en cero. También trae una grilla de tasa mensual por
+plazo (12 → 5%, 18 → 5,5%, 24 → 6%) que **no** es la que usó la operación (usó 6,83% mensual = TNA
+82): las tasas se siguen leyendo de la hoja, con `prestamos_ph`/`prestamos_pj` como extremos del
+rango.
 
 **Los textos de cara al usuario nombran la modalidad por la cuenta comitente**, sin aclaraciones
 entre paréntesis: "Sin cuenta comitente en el mercado de capitales" / "Con cuenta comitente en el

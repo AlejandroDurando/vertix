@@ -12,6 +12,7 @@ import { formatearCuit } from "@/lib/cuit";
 import {
   MIN_DIAS_HABILES,
   MODALIDAD_OPCIONES,
+  PLAZO_MAX_MESES,
   PORCENTAJE_ACEPTADO_FCE,
   fechaConcertacion,
   instrumentoSoloComitente,
@@ -365,8 +366,9 @@ export function SimuladorForm() {
               type="number"
               inputMode="numeric"
               min="1"
-              max="120"
+              max={PLAZO_MAX_MESES}
               required
+              hint={`Hasta ${PLAZO_MAX_MESES} meses.`}
               error={fe("plazo_meses")}
             />
           )}
@@ -581,8 +583,10 @@ function PrestamosResultCard({ data }: { data: PrestamosResult }) {
         Resultado estimado
       </h3>
       <div className="divide-y divide-vertix/10">
+        {/* La cuota es fija: el total repartido en partes iguales, IVA incluido.
+            El cuadro por dentro es francés, pero eso no se cobra así. */}
         <Row
-          label="Cuota mensual"
+          label="Cuota mensual fija"
           value={rango(data.cuota_mensual_desde, data.cuota_mensual_hasta, ARS.format)}
         />
         <Row
@@ -592,6 +596,10 @@ function PrestamosResultCard({ data }: { data: PrestamosResult }) {
         <Row
           label="Total intereses"
           value={rango(data.total_intereses_desde, data.total_intereses_hasta, ARS.format)}
+        />
+        <Row
+          label="IVA sobre los intereses"
+          value={rango(data.total_iva_desde, data.total_iva_hasta, ARS.format)}
         />
         <Row
           label="Tasa (TNA)"

@@ -17,6 +17,7 @@ import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import {
   MIN_DIAS_HABILES,
   MODALIDAD_OPCIONES,
+  PLAZO_MAX_MESES,
   PORCENTAJE_ACEPTADO_FCE,
   instrumentoSoloComitente,
   instrumentoSoloDirecto,
@@ -345,7 +346,8 @@ export function PrecalificacionForm() {
                 type="number"
                 inputMode="numeric"
                 min="1"
-                max="120"
+                max={PLAZO_MAX_MESES}
+                hint={`Hasta ${PLAZO_MAX_MESES} meses.`}
                 error={fe("plazo_meses")}
               />
               <Select
