@@ -374,5 +374,25 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Falta información / a confirmar
 
-- Sailing: ¿CBU y Nota EPYME obligatorios? ¿Co-titularidad?
-- ¿La DDJJ de actividad lícita también se pide a personas jurídicas? (en PF ya se pide como adjunto)
+Preguntas abiertas al cliente, esperando respuesta (al 20/08/2026). Las respuestas llegan por
+WhatsApp vía Carolina; las de tasas y mecánica las contesta Martín.
+
+**Del cuadro de cotización de cheques:**
+1. **La percepción de IVA, ¿depende del vendedor o del comprador?** En la planilla está descontada
+   del **vendedor**, con la nota "si es mono, no paga"; el código la ata a la condición del
+   **comprador** (`condicion_comprador`). Son $26.026 en la fila 7 de la planilla.
+2. **El arancel, ¿piso de $500 o nada si da menos de $100?** La planilla cobra 0 cuando el cálculo
+   no llega a $100; el código aplica `arancel_minimo` = 500 como piso. Las dos reglas se contradicen.
+3. **¿El arancel de la ALyC al comprador es siempre 0?** La celda de esa tasa está vacía en la
+   planilla, así que `arancel_comprador` quedó en 0.
+
+**De los préstamos y prendas** (planilla "Cuadro Cálculo Cuota Ramirez"):
+4. **¿La grilla de tasa mensual por plazo (12 → 5%, 18 → 5,5%, 24 → 6%) reemplaza al rango
+   `prestamos_ph`–`prestamos_pj` (72–82%)?** Esa operación se cotizó con TNA 82, no con la grilla.
+5. **¿Los seguros y los gastos de otorgamiento se cobran?** En la planilla están en cero y sin
+   fórmula, y el premio anual del seguro del bien ($81.861) no lo referencia ninguna celda.
+6. **Con 6 meses ya habilitado, ¿qué tasa le corresponde?** La grilla del Excel arranca en 12.
+
+**De Sailing** (pendiente desde el 31/07/2026, el cliente dijo que pasaría el detalle "en breve"):
+7. ¿CBU y Nota EPYME obligatorios? ¿Co-titularidad?
+8. ¿La DDJJ de actividad lícita también se pide a personas jurídicas? (en PF ya se pide como adjunto)
