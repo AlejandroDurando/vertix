@@ -8,8 +8,28 @@ import {
 } from "./fechas";
 import type { InstrumentoCheque, ModalidadCheque } from "@/types";
 
-/** Plazo máximo de un préstamo: más que eso no se toma (cliente, 19/08/2026). */
-export const PLAZO_MAX_MESES = 24;
+/**
+ * Plazos que se ofrecen, en meses. Es un desplegable y no un campo libre
+ * (cliente, 20/08/2026): son los plazos que realmente se otorgan, y más de 24
+ * no se toma.
+ */
+export const PLAZOS_MESES = [6, 12, 18, 24] as const;
+
+export const PLAZO_MAX_MESES = Math.max(...PLAZOS_MESES);
+
+/** Opciones del desplegable, compartidas por el simulador y la precalificación. */
+export const PLAZO_OPCIONES = PLAZOS_MESES.map((meses) => ({
+  value: String(meses),
+  label: `${meses} meses`,
+}));
+
+const plazoSchema = z
+  .number({ invalid_type_error: "Plazo inválido" })
+  .int("El plazo debe ser un número entero")
+  .refine(
+    (v) => (PLAZOS_MESES as readonly number[]).includes(v),
+    `El plazo tiene que ser de ${PLAZOS_MESES.join(", ")} meses`
+  );
 
 /** Días hábiles mínimos entre hoy y la fecha de pago del cheque. */
 export const MIN_DIAS_HABILES = 5;
@@ -178,11 +198,7 @@ export const precalificacionPrestamosSchema = z.object({
   tipo_prestamo: z.enum(["personal", "prendario"]),
   cuit_solicitante: cuitSchema,
   monto_solicitado: montoSchema,
-  plazo_meses: z
-    .number({ invalid_type_error: "Plazo inválido" })
-    .int("El plazo debe ser un número entero")
-    .min(1, "El plazo mínimo es 1 mes")
-    .max(PLAZO_MAX_MESES, `El plazo máximo es ${PLAZO_MAX_MESES} meses`),
+  plazo_meses: plazoSchema,
   tipo_ingreso: z.enum(["relacion_dependencia", "monotributo", "empresa"]),
 });
 
@@ -338,11 +354,7 @@ export const simuladorChequesSchema = z
 export const simuladorPrestamosSchema = z.object({
   tipo: z.literal("prestamos"),
   monto: montoSchema,
-  plazo_meses: z
-    .number({ invalid_type_error: "Plazo inválido" })
-    .int("El plazo debe ser un número entero")
-    .min(1, "El plazo mínimo es 1 mes")
-    .max(PLAZO_MAX_MESES, `El plazo máximo es ${PLAZO_MAX_MESES} meses`),
+  plazo_meses: plazoSchema,
 });
 
 export type SimuladorInput =

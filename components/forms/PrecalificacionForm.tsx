@@ -17,7 +17,7 @@ import { hoy, sumarDiasHabiles, toISODate } from "@/lib/fechas";
 import {
   MIN_DIAS_HABILES,
   MODALIDAD_OPCIONES,
-  PLAZO_MAX_MESES,
+  PLAZO_OPCIONES,
   PORCENTAJE_ACEPTADO_FCE,
   fechaPagoMinima,
   instrumentoSoloComitente,
@@ -63,6 +63,7 @@ export function PrecalificacionForm() {
   const [tipoPrestamo, setTipoPrestamo] = useState<TipoPrestamo | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [preAprobado, setPreAprobado] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | undefined>();
   const [fechaPago, setFechaPago] = useState("");
@@ -103,6 +104,7 @@ export function PrecalificacionForm() {
     setError(null);
     setFieldError(undefined);
     setSuccess(false);
+    setPreAprobado(false);
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -129,11 +131,12 @@ export function PrecalificacionForm() {
       return;
     }
 
-    const res = await postForm("/api/precalificacion", fd);
+    const res = await postForm<{ pre_aprobado?: boolean }>("/api/precalificacion", fd);
     setSubmitting(false);
 
     if (res.success) {
       setSuccess(true);
+      setPreAprobado(Boolean(res.data?.pre_aprobado));
       setTipoPrestamo("");
       // Los campos controlados no los limpia form.reset().
       setMontoTotal("");
@@ -337,15 +340,13 @@ export function PrecalificacionForm() {
                 min="1"
                 error={fe("monto_solicitado")}
               />
-              <Input
+              <Select
                 name="plazo_meses"
-                label="Plazo (meses)"
+                label="Plazo"
                 required
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max={PLAZO_MAX_MESES}
-                hint={`Hasta ${PLAZO_MAX_MESES} meses.`}
+                options={PLAZO_OPCIONES}
+                placeholder="Seleccionar..."
+                defaultValue=""
                 error={fe("plazo_meses")}
               />
               <Select
@@ -408,10 +409,18 @@ export function PrecalificacionForm() {
             {error}
           </Alert>
         )}
-        {success && (
-          <Alert tone="success" title="Solicitud recibida">
-            Vamos a evaluar tu pre-calificación y te contactamos a la brevedad.
+        {success && preAprobado ? (
+          <Alert tone="success" title="¡PRE APROBADO!">
+            Tu solicitud pasó la verificación crediticia en el BCRA. Queda sujeta a
+            la revisión de la documentación y al análisis final, pero ya podemos
+            avanzar: te contactamos a la brevedad para cerrar los detalles.
           </Alert>
+        ) : (
+          success && (
+            <Alert tone="success" title="Solicitud recibida">
+              Vamos a evaluar tu pre-calificación y te contactamos a la brevedad.
+            </Alert>
+          )
         )}
 
         <div className="pt-2">

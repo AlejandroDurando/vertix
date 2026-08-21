@@ -12,7 +12,7 @@ import { formatearCuit } from "@/lib/cuit";
 import {
   MIN_DIAS_HABILES,
   MODALIDAD_OPCIONES,
-  PLAZO_MAX_MESES,
+  PLAZO_OPCIONES,
   PORCENTAJE_ACEPTADO_FCE,
   fechaConcertacion,
   fechaPagoMinima,
@@ -358,15 +358,13 @@ export function SimuladorForm() {
               )}
             </>
           ) : (
-            <Input
+            <Select
               name="plazo_meses"
-              label="Plazo (meses)"
-              type="number"
-              inputMode="numeric"
-              min="1"
-              max={PLAZO_MAX_MESES}
+              label="Plazo"
+              options={PLAZO_OPCIONES}
+              placeholder="Seleccionar..."
+              defaultValue=""
               required
-              hint={`Hasta ${PLAZO_MAX_MESES} meses.`}
               error={fe("plazo_meses")}
             />
           )}

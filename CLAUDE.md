@@ -14,7 +14,7 @@ npm run dev          # desarrollo (localhost:3000)
 npm run build        # build de producción
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
-npm test             # vitest run — 144 tests
+npm test             # vitest run — 147 tests
 npm run check:sheets # verifica credenciales + tasas leídas de la hoja
 ```
 
@@ -156,9 +156,10 @@ $1.001.183,06** (la francesa daba $935.895,09). Hay un test que reproduce esas c
 ⚠️ El IVA sobre los intereses **no se cobraba antes**: el simulador devolvía la cuota francesa pelada,
 que en el ejemplo quedaba $783.455 por debajo del total real (un 7%, y $65.288 por mes en la cuota).
 
-**El plazo máximo de un préstamo es de 24 meses** ("más que eso no tomamos", cliente 19/08/2026):
-`PLAZO_MAX_MESES` en `lib/validations.ts`, compartido por el simulador y la precalificación (antes
-eran 120).
+**El plazo de un préstamo se elige de una lista: 6, 12, 18 o 24 meses** (cliente, 19 y 20/08/2026:
+"más que eso no tomamos" y "debería ser un desplegable"). `PLAZOS_MESES` en `lib/validations.ts`
+manda: arma el desplegable de los dos formularios (`PLAZO_OPCIONES`) y valida el body, así que un
+plazo que no esté en la lista se rechaza. Antes era un campo libre de 1 a 120.
 
 En la planilla del cliente hay tres cosas cargadas que **no** entran en la cuota y por eso no se
 implementaron: el seguro de vida (0,1% para persona física) y el seguro del bien están en cero y sin
@@ -303,6 +304,17 @@ siguiente y hay que reprogramar la liquidación (pedido del cliente, 13/08/2026)
 días de descuento, el tramo de tasa que aplica y el piso de 5 días hábiles. "Mañana" es el **próximo
 día hábil** (`fechaConcertacion()` en `lib/validations.ts`): ni el mercado ni el banco liquidan un
 sábado. El simulador público siempre cotiza desde hoy.
+
+**La precalificación de préstamos consulta el BCRA y anuncia la pre-aprobación.** Se mira el
+`cuit_solicitante` con las mismas reglas que los cheques (pedido del cliente, 20/08/2026) y, si el
+BCRA respondió y no hay observaciones, la respuesta trae `pre_aprobado: true` y el formulario muestra
+un cartel **PRE APROBADO**, aclarando que queda sujeto a la documentación y al análisis final. En el
+CRM el resumen de la columna O termina en `· PRE APROBADO`.
+
+⚠️ **Nunca bloquea**: una precalificación es un lead y una situación mala en un banco no descarta la
+operación. Y si el BCRA no responde no se anuncia nada, porque no se promete lo que no se verificó.
+La pre-aprobación es sólo de préstamos: en cheques quien se consulta es el librador, que no es quien
+pide.
 
 **No se descuentan cheques propios**: si el CUIT del librador y el del endosatario coinciden, se
 rechaza en simulador y precalificación.

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_DIAS_HABILES,
+  PLAZOS_MESES,
+  PLAZO_MAX_MESES,
+  PLAZO_OPCIONES,
   cumpleMinDiasHabiles,
   fechaConcertacion,
   fechaPagoMinima,
@@ -47,6 +50,40 @@ const precalificacion = (over: Record<string, unknown>) =>
     cuit_endosatario: CUIT_B,
     ...over,
   });
+
+describe("plazo de préstamos — lista cerrada", () => {
+  const prestamo = (plazo: unknown) =>
+    precalificacionSchema.safeParse({
+      servicio: "prestamos",
+      nombre: "Juan Pérez",
+      email: "juan@example.com",
+      telefono: "1122334455",
+      tipo_persona: "humana",
+      tipo_prestamo: "prendario",
+      cuit_solicitante: CUIT_A,
+      monto_solicitado: 1_000_000,
+      plazo_meses: plazo,
+      tipo_ingreso: "relacion_dependencia",
+    });
+
+  it("acepta los cuatro plazos que se ofrecen", () => {
+    for (const meses of PLAZOS_MESES) {
+      expect(prestamo(meses).success).toBe(true);
+    }
+  });
+
+  it("rechaza cualquier otro plazo", () => {
+    // 10 y 36 quedaban dentro del viejo rango libre de 1 a 24 / 120 meses.
+    expect(prestamo(10).success).toBe(false);
+    expect(prestamo(36).success).toBe(false);
+    expect(prestamo(0).success).toBe(false);
+  });
+
+  it("el desplegable ofrece exactamente esos plazos", () => {
+    expect(PLAZO_OPCIONES.map((o) => o.value)).toEqual(["6", "12", "18", "24"]);
+    expect(PLAZO_MAX_MESES).toBe(24);
+  });
+});
 
 describe("mínimo de días hábiles — se cuenta el día de la operación", () => {
   const miercoles = new Date(2026, 7, 19); // miércoles 19/08/2026

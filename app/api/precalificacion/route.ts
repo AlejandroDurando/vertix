@@ -100,20 +100,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Enriquecimiento BCRA (informativo, no bloquea la precalificación).
+  // Enriquecimiento BCRA. Nunca bloquea: una precalificación es un lead, y una
+  // situación mala en un banco no descarta la operación (la analiza Vertix a
+  // mano). En cheques se mira al librador, que es quien termina pagando; en
+  // préstamos, al solicitante (pedido del cliente, 20/08/2026).
   let bcraResumen: string | undefined;
-  if (data.servicio === "cheques") {
-    try {
-      const bcra = await consultarBcra(data.cuit_librador);
-      const ev = evaluarBcra(bcra, "Librador");
-      if (bcra.disponible) {
-        bcraResumen = `Situación máx. ${bcra.situacionMaxima ?? "?"}${
-          bcra.chequesRechazadosImpagos ? " · cheques rechazados impagos" : ""
-        } — ${ev.decision.toUpperCase()}`;
-      }
-    } catch {
-      // best-effort
+  // Sólo se anuncia la pre-aprobación cuando el BCRA respondió y salió limpio:
+  // si el servicio no contesta, no se promete nada.
+  let preAprobado = false;
+  try {
+    const cuit =
+      data.servicio === "cheques" ? data.cuit_librador : data.cuit_solicitante;
+    const etiqueta = data.servicio === "cheques" ? "Librador" : "Solicitante";
+    const bcra = await consultarBcra(cuit);
+    const ev = evaluarBcra(bcra, etiqueta);
+    if (bcra.disponible) {
+      preAprobado = data.servicio === "prestamos" && ev.decision === "permitir";
+      bcraResumen = `${etiqueta}: situación máx. ${bcra.situacionMaxima ?? "?"}${
+        bcra.chequesRechazadosImpagos ? " · cheques rechazados impagos" : ""
+      } — ${ev.decision.toUpperCase()}${preAprobado ? " · PRE APROBADO" : ""}`;
     }
+  } catch {
+    // best-effort
   }
 
   const adjuntos = Object.entries(files).map(([campo, f]) => ({
@@ -202,6 +210,7 @@ export async function POST(req: NextRequest) {
 
   logger.info("precalificacion", "Solicitud recibida", {
     servicio: data.servicio,
+    pre_aprobado: preAprobado,
     adjuntos: [...adjuntos.map((a) => a.campo), ...Object.keys(subidos)],
     en_bucket: enlaces.length,
     bcra: bcraResumen,
@@ -212,5 +221,6 @@ export async function POST(req: NextRequest) {
     recibido: true,
     servicio: data.servicio,
     confirmacion_enviada: confirmacion?.ok ?? false,
+    pre_aprobado: preAprobado,
   });
 }
