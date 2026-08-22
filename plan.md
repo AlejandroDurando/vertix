@@ -1,6 +1,7 @@
 # Plan técnico — Cotización de cheques en lote con lectura automática
 
-Estado: **propuesto**, sin implementar. Escrito el 21/08/2026.
+Estado: **pasos 1 a 6 implementados** el 21/08/2026. Queda el paso 7, que necesita archivos
+reales del cliente. Escrito el 21/08/2026.
 
 ## 1. El problema
 
@@ -144,44 +145,44 @@ porque cotiza de a uno.
 
 Cada paso deja algo que funciona y se puede probar solo.
 
-### Paso 1 — Cálculo del lote
+### Paso 1 — Cálculo del lote ✅
 
 - `types/index.ts`: `FilaLote`, `LoteInput`, `LoteOutput` (filas cotizadas + totales).
 - `lib/lote.ts`: `cotizarLote(input, tasas, ahora)` — corre `simularCheques()` por fila y suma.
 - `tests/lote.test.ts`: reproducir las **tres filas de la planilla compra CPD PESOS** y verificar que
   los totales dan los de la fila TOTAL. Ese es el criterio de aceptación del paso.
 
-### Paso 2 — Endpoint de cotización
+### Paso 2 — Endpoint de cotización ✅
 
 - `app/api/lote/cotizar/route.ts`: valida con zod (máximo 50 filas), lee tasas, consulta BCRA por
   CUIT único, devuelve `LoteOutput`. Rate limit propio.
 - `lib/validations.ts`: esquema del lote, reusando el del simulador para cada fila.
 
-### Paso 3 — Página con tabla manual
+### Paso 3 — Página con tabla manual ✅
 
 - `app/lote/page.tsx` + `components/forms/LoteForm.tsx`: encabezado con los datos del lote, tabla
   editable, agregar/eliminar filas, totales al pie, botón de copiar para Excel.
 - Sin lectura todavía: se tipea. Sirve para dejar probado el cálculo y la UI antes de sumar la parte
   incierta.
 
-### Paso 4 — Lectura de PDF y planillas (sin IA)
+### Paso 4 — Lectura de PDF y planillas (sin IA) ✅
 
 - `lib/lector-cheques.ts` con los caminos determinísticos: CSV/Excel y PDF con capa de texto.
 - `app/api/lote/leer/route.ts`: recibe el archivo, devuelve `ChequeLeido[]`.
 - En la UI: zona de arrastre, envío secuencial, las filas aparecen a medida que llegan.
 
-### Paso 5 — Lectura de imágenes con Gemini
+### Paso 5 — Lectura de imágenes con Gemini ✅
 
 - Se agrega el camino del modelo dentro de `lib/lector-cheques.ts`, detrás de la misma función.
 - `GEMINI_API_KEY` en `.env.local`, `.env.example` y Vercel. Sin la clave, 503 y carga manual.
 - Prompt con la estructura del cheque y JSON estricto.
 
-### Paso 6 — Confianza y revisión
+### Paso 6 — Confianza y revisión ✅
 
 - Los cuatro chequeos del punto 5, el resaltado por fila y el bloqueo de cotización con filas
   incompletas.
 
-### Paso 7 — Ajuste contra archivos reales
+### Paso 7 — Ajuste contra archivos reales ⏳ pendiente
 
 - Probar con los ejemplos que mande el cliente (PDF, captura y foto de cheque físico sacada como la
   sacan de verdad).

@@ -14,7 +14,7 @@ npm run dev          # desarrollo (localhost:3000)
 npm run build        # build de producción
 npm run typecheck    # tsc --noEmit
 npm run lint         # next lint
-npm test             # vitest run — 147 tests
+npm test             # vitest run — 194 tests
 npm run check:sheets # verifica credenciales + tasas leídas de la hoja
 ```
 
@@ -25,7 +25,7 @@ con dominio `www.vertix.com.ar` (sin fecha definida).
 
 ## Arquitectura
 
-Cuatro flujos independientes, mismo patrón de punta a punta: `app/<ruta>/page.tsx` renderiza un
+Cinco flujos independientes, mismo patrón de punta a punta: `app/<ruta>/page.tsx` renderiza un
 form client component de `components/forms/`, que arma un `FormData`/JSON y lo postea con
 `postJson`/`postForm` (`lib/api-client.ts`) al route handler en `app/api/<ruta>/route.ts`. El
 handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve el sobre
@@ -52,6 +52,9 @@ handler valida con `lib/validations.ts`, corre la lógica de negocio y devuelve 
   todos. Persiste en
   `sheets-crm.ts` (pestañas `AltasPF`/`AltasPJ`) + `email.ts` (adjuntos van en el email, no se
   guardan — ver pendiente #1 abajo) en paralelo.
+
+- **`/lote`** (interno) → `POST /api/lote/leer` (un archivo por request) y `POST /api/lote/cotizar`.
+  Cotiza una tanda entera de cheques de un mismo cliente. Ver más abajo.
 
 **Adjuntos**: si el bucket está configurado, los forms piden una URL firmada a `/api/adjuntos/firmar`,
 suben cada archivo **directo al bucket** (así el request nunca toca el límite de 4,5MB de Vercel) y
@@ -330,6 +333,53 @@ pide.
 **No se descuentan cheques propios**: si el CUIT del librador y el del endosatario coinciden, se
 rechaza en simulador y precalificación.
 
+**La tanda se cotiza junta, y los cheques entran leyéndolos del archivo.** El equipo recibe diez
+cheques de un mismo cliente y los cargaba uno por uno en su Excel copiando de un PDF, una captura de
+home banking o una foto (pedido del cliente, agosto de 2026). `/lote` es esa mesa: arriba lo que
+comparten todos —vendedor, modalidad, instrumento, día de concertación—, abajo una fila por valor, y
+al pie los totales con la forma de la fila TOTAL de la planilla *compra CPD PESOS*. `cotizarLote()`
+en `lib/lote.ts` corre `simularCheques()` por fila y suma: **no hay cálculo nuevo**, así que lo
+verificado al peso para un cheque vale para la tanda. Un botón copia todo con tabulaciones para
+pegarlo en Excel. La página va sin enlace en el menú y con `noindex`, como `/legajos`, y **cuando esa
+lleve contraseña, esta va en el mismo lote**.
+
+**En el lote el BCRA nunca frena.** Se consulta una vez por CUIT distinto (diez cheques del mismo
+librador son una llamada) y una situación mala marca esa fila, no la tanda: bloquear diez cheques por
+uno no tiene sentido cuando el equipo tiene el dato a la vista. Es lo contrario del simulador de a
+uno, que sí bloquea. **El CUIT del librador puede faltar** —una captura de home banking a veces
+muestra sólo la razón social—: sin CUIT no hay consulta, pero la fila se cotiza igual.
+
+**La lectura de archivos va por tres caminos, del más exacto al más incierto** (`lib/lector-cheques.ts`,
+todo detrás de `leerCheques()`, así cambiar de proveedor es un archivo):
+
+| Entrada | Cómo se lee | Datos a terceros |
+|---|---|---|
+| CSV / Excel del banco | mapeo de columnas por encabezado | no |
+| PDF con capa de texto | extracción en el servidor, línea por línea | no |
+| imagen o PDF escaneado | Gemini (`GEMINI_API_KEY`) | **sí** |
+
+La detección es automática y el usuario no elige nada. El .xlsx se lee con `jszip` —un xlsx es un zip
+de XML— para no sumar una librería de planillas entera; la única dependencia nueva es `unpdf`. En el
+PDF, **una línea con una fecha y un importe es un cheque** (la forma de los listados de echeq); si
+ninguna califica, el documento se lee como un cheque suelto. Las fechas y los CUIT se sacan del
+camino **antes** de buscar importes: si no, el "2026" de un vencimiento se lee como plata. Sin
+`GEMINI_API_KEY` no se manda nada afuera y la tabla dice, archivo por archivo, cuál hay que cargar a
+mano. **Los archivos se leen y se descartan**: no son un legajo, y no guardarlos reduce la exposición
+de datos de terceros.
+
+**Al modelo se le pide `null`, no lo probable.** Un campo vacío se corrige de un vistazo; uno
+inventado es un error silencioso, y el que cuesta plata es el importe. Lo que devuelve pasa por los
+mismos parseos que el resto (`normalizarLeido`), así un CUIT que no cierra por dígito verificador
+queda en null en vez de viajar mal a la tabla.
+
+**La revisión marca lo dudoso, no pide revisar todo.** `revisarFilas()` en `lib/revision-lote.ts`
+—puro y sin red, corre en el navegador mientras se tipea— cruza cuatro cosas: dígito verificador del
+CUIT, importe en números contra el escrito en letras, vencimiento vencido o a más de 360 días (el
+2027 por 2026 que multiplica el descuento) y el mismo cheque cargado dos veces. Una fila sin importe
+o sin vencimiento es `incompleta` y deshabilita el botón; una dudosa es `revisar` y se cotiza igual.
+⚠️ El cruce números/letras **no es una garantía**: si el modelo lee mal los dos de la misma forma no
+se detecta. La revisión humana no es opcional.
+
 ## Estado de las integraciones
 
 | Integración | Estado |
@@ -340,6 +390,7 @@ rechaza en simulador y precalificación.
 | **BCRA Central de Deudores** | Activo, API pública sin key ni costo (`lib/bcra.ts`). Dos endpoints: deudas (situación 1–5 por entidad, se toma la máxima) y cheques rechazados. Toggle `BCRA_CHECK_ENABLED=false`. |
 | **Validación de CUIT** | Local, sin servicio externo (`lib/cuit.ts`): verifica los 11 dígitos y el dígito verificador por módulo 11. Normaliza la entrada (acepta guiones y espacios) antes de validar y de consultar el BCRA. |
 | **Almacenamiento de adjuntos (S3/R2)** | **Activo** — bucket `vertix-legajos` en Cloudflare R2 (verificado el 06/08/2026: 6 legajos guardados). `lib/storage.ts` + `/api/adjuntos/firmar` (URL de subida) + `/api/adjuntos` (descarga con token). Necesita `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION=auto`, `ADJUNTOS_SECRET` y `APP_URL`. Si faltaran, `firmar` devuelve 503 y los forms vuelven a mandar los archivos dentro del multipart (con el techo de 4,5MB de Vercel). |
+| **Gemini (lectura de cheques)** | Opcional, para `/lote`. `GEMINI_API_KEY` (y `GEMINI_MODEL`, por defecto `gemini-2.5-flash`). Sin la clave, las planillas y los PDF con texto se leen igual —en el servidor, sin salir— y las fotos se cargan a mano. **Falta la aprobación explícita del cliente** para mandar documentación de sus clientes a un servicio externo. |
 | **HubSpot** | **Inactivo.** `lib/hubspot.ts` es un stub: la lógica real está comentada y espera `HUBSPOT_API_KEY`. Se llama desde contacto y precalificación pero devuelve `disabled`. |
 
 ⚠️ El CRM tiene filas de prueba que empiezan con **`EJEMPLO`** en las 4 pestañas (carga de
@@ -387,6 +438,14 @@ verificación). Borrarlas cuando ya no sirvan.
 
 Las seis preguntas del cuadro de cheques y de la prenda quedaron **respondidas el 21/08/2026** y
 están reflejadas arriba, cada una en su sección.
+
+**Del lote de cheques** (planteadas el 21/08/2026, sin respuesta):
+1. El arancel mínimo de $500, ¿es por cheque o por boleto? Con un cheque no se nota; con diez chicos
+   son $4.500 de diferencia. Hoy se calcula por fila, como la planilla.
+2. ¿Algún cliente puede exportar el listado de echeq en Excel o CSV desde el banco? Si existe, es
+   lectura exacta y gratis, y vuelve innecesaria la parte de IA para ese cliente.
+3. Mandar imágenes de cheques a un servicio de IA externo: es documentación de sus clientes y tiene
+   que estar aprobado. Los archivos no se guardan, pero pasan por el proveedor.
 
 **De Sailing** (pendiente desde el 31/07/2026, el cliente dijo que pasaría el detalle "en breve"):
 1. ¿CBU y Nota EPYME obligatorios? ¿Co-titularidad?
