@@ -476,7 +476,10 @@ export function leerConModeloDisponible(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
-const MODELO = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// Un modelo de la familia flash: la tarea es leer, no razonar. Se puede fijar
+// otro con GEMINI_MODEL sin tocar el código, que es lo que hace falta cuando
+// Google jubila uno (`gemini-2.5-flash` dejó de darse de alta en agosto 2026).
+const MODELO = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 /**
  * Un cheque es un documento estandarizado, así que se le describe la estructura
