@@ -20,6 +20,7 @@ import {
   type Concertacion,
 } from "@/lib/validations";
 import type { ChequeLeido, LecturaResultado } from "@/lib/lector-cheques";
+import { resumirRevision, revisarFilas, type RevisionFila } from "@/lib/revision-lote";
 import type {
   BcraInfo,
   InstrumentoCheque,
@@ -66,6 +67,8 @@ type Fila = {
   cuit_librador: string;
   banco: string;
   numero: string;
+  /** Importe en letras que leyó el lector, para cotejarlo contra el de arriba. */
+  nominal_en_letras: number | null;
 };
 
 const filaVacia = (id: string): Fila => ({
@@ -76,6 +79,7 @@ const filaVacia = (id: string): Fila => ({
   cuit_librador: "",
   banco: "",
   numero: "",
+  nominal_en_letras: null,
 });
 
 // La tabla no puede llevar una etiqueta visible por celda como el resto de los
@@ -84,6 +88,7 @@ const filaVacia = (id: string): Fila => ({
 const celda =
   "w-full rounded-md border border-vertix/15 bg-white px-2 py-1.5 text-sm text-vertix outline-none transition focus:border-vertix focus:ring-2 focus:ring-vertix/15";
 const celdaError = "border-red-400 focus:border-red-500 focus:ring-red-100";
+const celdaAviso = "border-amber-400 bg-amber-50/50";
 
 const numero = (v: string) => {
   const n = Number(v);
@@ -143,6 +148,9 @@ export function LoteForm() {
       prev.map((f) => {
         if (f.id !== id) return f;
         const fila = { ...f, [campo]: valor };
+        // Corregido a mano, el importe en letras que leyó el lector ya no dice
+        // nada: quien edita vio el documento.
+        if (campo === "monto") fila.nominal_en_letras = null;
         // El valor aceptado de la FCE se precarga con el 80% del total, que es
         // lo habitual, y deja de recalcularse en cuanto se lo toca a mano.
         if (campo === "monto" && esFce && !f.monto_aceptado) {
@@ -212,14 +220,51 @@ export function LoteForm() {
         cuit_librador: c.cuit_librador ?? "",
         banco: c.banco ?? "",
         numero: c.numero ?? "",
+        nominal_en_letras: c.nominal_en_letras,
       }));
       return [...cargadas, ...nuevas];
     });
   }
 
-  /** `filas.2.fecha_pago` → resalta esa celda y nada más. */
-  const celdaMal = (indice: number, campo: string) =>
-    campoError === `filas.${indice}.${campo}`;
+  /**
+   * Sólo se revisan las filas que tienen algo cargado: las vacías de abajo son
+   * lugar para escribir, no errores.
+   */
+  const { conDatos, revisiones } = useMemo(() => {
+    const cargadas = filas.filter(
+      (f) => f.monto || f.fecha_pago || f.cuit_librador || f.numero
+    );
+    const mapa = new Map<string, RevisionFila>();
+    for (const r of revisarFilas(
+      cargadas.map((f) => ({
+        id: f.id,
+        monto: numero(f.monto) ?? null,
+        fecha_pago: f.fecha_pago || null,
+        cuit_librador: f.cuit_librador || null,
+        banco: f.banco || null,
+        numero: f.numero || null,
+        nominal_en_letras: f.nominal_en_letras,
+      }))
+    )) {
+      mapa.set(r.id, r);
+    }
+    return { conDatos: cargadas, revisiones: mapa };
+  }, [filas]);
+  const resumen = resumirRevision([...revisiones.values()]);
+
+  /** Si una celda tiene un aviso de la revisión, o el error que devolvió el server. */
+  const avisoDe = (id: string, campo: string) =>
+    revisiones.get(id)?.avisos.find((a) => a.campo === campo)?.mensaje;
+
+  /**
+   * Clase de una celda: el error que devolvió el server manda sobre el aviso de
+   * la revisión, porque es el que impide cotizar.
+   * `filas.2.fecha_pago` resalta esa celda y nada más.
+   */
+  const claseCelda = (id: string, indice: number, campo: string) => {
+    if (campoError === `filas.${indice}.${campo}`) return celdaError;
+    return avisoDe(id, campo) ? celdaAviso : "";
+  };
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -227,9 +272,17 @@ export function LoteForm() {
     setCampoError(null);
     setResultado(null);
 
-    const cargadas = filas.filter((f) => f.monto || f.fecha_pago);
-    if (cargadas.length === 0) {
+    if (conDatos.length === 0) {
       setError("Cargá al menos un cheque.");
+      return;
+    }
+    // Una fila a medias no se puede cotizar: falta el importe o el vencimiento.
+    if (resumen.incompletas > 0) {
+      setError(
+        resumen.incompletas === 1
+          ? "Hay una fila sin el importe o el vencimiento. Completala o eliminala."
+          : `Hay ${resumen.incompletas} filas sin el importe o el vencimiento. Completalas o eliminalas.`
+      );
       return;
     }
 
@@ -240,7 +293,7 @@ export function LoteForm() {
       condicion_vendedor: condicionVendedor,
       ...(cuitEndosatario ? { cuit_endosatario: cuitEndosatario } : {}),
       concertacion,
-      filas: cargadas.map((f) => ({
+      filas: conDatos.map((f) => ({
         id: f.id,
         monto: numero(f.monto) ?? 0,
         ...(esFce && numero(f.monto_aceptado)
@@ -454,6 +507,7 @@ export function LoteForm() {
                 <th className="px-3 py-2 font-semibold">CUIT librador</th>
                 <th className="px-3 py-2 font-semibold">Banco</th>
                 <th className="px-3 py-2 font-semibold">Nº</th>
+                <th className="px-3 py-2 font-semibold">Estado</th>
                 <th className="w-10 px-2 py-2" />
               </tr>
             </thead>
@@ -466,7 +520,7 @@ export function LoteForm() {
                       min="1"
                       step="0.01"
                       aria-label={`Importe del cheque ${i + 1}`}
-                      className={`${celda} ${celdaMal(i, "monto") ? celdaError : ""}`}
+                      className={`${celda} ${claseCelda(fila.id, i, "monto")}`}
                       value={fila.monto}
                       onChange={(e) => editar(fila.id, "monto", e.target.value)}
                     />
@@ -478,7 +532,7 @@ export function LoteForm() {
                         min="1"
                         step="0.01"
                         aria-label={`Valor aceptado del cheque ${i + 1}`}
-                        className={`${celda} ${celdaMal(i, "monto_aceptado") ? celdaError : ""}`}
+                        className={`${celda} ${claseCelda(fila.id, i, "monto_aceptado")}`}
                         value={fila.monto_aceptado}
                         onChange={(e) => editar(fila.id, "monto_aceptado", e.target.value)}
                       />
@@ -489,7 +543,7 @@ export function LoteForm() {
                       type="date"
                       min={minFecha}
                       aria-label={`Vencimiento del cheque ${i + 1}`}
-                      className={`${celda} ${celdaMal(i, "fecha_pago") ? celdaError : ""}`}
+                      className={`${celda} ${claseCelda(fila.id, i, "fecha_pago")}`}
                       value={fila.fecha_pago}
                       onChange={(e) => editar(fila.id, "fecha_pago", e.target.value)}
                     />
@@ -499,7 +553,7 @@ export function LoteForm() {
                       inputMode="numeric"
                       maxLength={11}
                       aria-label={`CUIT del librador del cheque ${i + 1}`}
-                      className={`${celda} ${celdaMal(i, "cuit_librador") ? celdaError : ""}`}
+                      className={`${celda} ${claseCelda(fila.id, i, "cuit_librador")}`}
                       value={fila.cuit_librador}
                       onChange={(e) =>
                         editar(fila.id, "cuit_librador", e.target.value.replace(/\D/g, ""))
@@ -517,10 +571,13 @@ export function LoteForm() {
                   <td className="px-3 py-2">
                     <input
                       aria-label={`Número del cheque ${i + 1}`}
-                      className={celda}
+                      className={`${celda} ${claseCelda(fila.id, i, "numero")}`}
                       value={fila.numero}
                       onChange={(e) => editar(fila.id, "numero", e.target.value)}
                     />
+                  </td>
+                  <td className="px-3 py-2">
+                    <EstadoCelda revision={revisiones.get(fila.id)} />
                   </td>
                   <td className="px-2 py-2 text-center">
                     <button
@@ -547,14 +604,44 @@ export function LoteForm() {
         )}
       </section>
 
+      {resumen.aRevisar > 0 && (
+        <Alert tone="warning">
+          {resumen.aRevisar === 1
+            ? "Hay una fila marcada para revisar."
+            : `Hay ${resumen.aRevisar} filas marcadas para revisar.`}{" "}
+          Pasá el mouse por el estado de la fila para ver por qué.
+        </Alert>
+      )}
+
       {error && <Alert tone="error">{error}</Alert>}
 
-      <Button type="submit" disabled={enviando}>
+      <Button type="submit" disabled={enviando || resumen.incompletas > 0}>
         {enviando ? "Cotizando…" : "Cotizar la tanda"}
       </Button>
 
       {resultado && <Resultado lote={resultado} onCopiar={copiar} copiado={copiado} />}
     </form>
+  );
+}
+
+/**
+ * El estado de una fila. Lo que importa es que las que probablemente estén mal
+ * salten a la vista: una fila correcta no dice nada.
+ */
+function EstadoCelda({ revision }: { revision?: RevisionFila }) {
+  if (!revision || revision.estado === "ok") {
+    return <span className="text-xs text-vertix/30">—</span>;
+  }
+  const incompleta = revision.estado === "incompleta";
+  return (
+    <span
+      title={revision.avisos.map((a) => a.mensaje).join(" ")}
+      className={`inline-block cursor-help rounded px-1.5 py-0.5 text-[11px] font-medium ${
+        incompleta ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"
+      }`}
+    >
+      {incompleta ? "Incompleta" : "Revisar"}
+    </span>
   );
 }
 
