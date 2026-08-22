@@ -6,6 +6,7 @@ import {
   leerCsv,
   leerXlsx,
   parsearFecha,
+  normalizarLeido,
   parsearImporte,
 } from "@/lib/lector-cheques";
 
@@ -179,5 +180,55 @@ describe("leerXlsx", () => {
     }
     // No tiene columnas de cheques: lo que importa es que no explote.
     await expect(leerXlsx(datos, ruta)).resolves.toBeInstanceOf(Array);
+  });
+});
+
+// Lo que devuelve el modelo no se toma como viene: pasa por los mismos parseos
+// que el resto, así una alucinación queda en null y no en la tabla.
+describe("normalizarLeido", () => {
+  it("normaliza fecha, CUIT y número", () => {
+    expect(
+      normalizarLeido(
+        {
+          nominal: 4432155,
+          fecha_pago: "27/08/2026",
+          cuit_librador: "20-12345678-6",
+          banco: "Galicia",
+          numero: "Nº 00012345",
+          nominal_en_letras: 4432155,
+        },
+        "foto.jpg"
+      )
+    ).toEqual({
+      nominal: 4_432_155,
+      fecha_pago: "2026-08-27",
+      cuit_librador: "20123456786",
+      banco: "Galicia",
+      numero: "00012345",
+      nominal_en_letras: 4_432_155,
+      origen: "foto.jpg",
+    });
+  });
+
+  it("descarta un CUIT que no cierra por dígito verificador", () => {
+    const c = normalizarLeido(
+      { nominal: 1000, fecha_pago: "2026-08-27", cuit_librador: "20123456780" },
+      "a.jpg"
+    );
+    expect(c!.cuit_librador).toBeNull();
+  });
+
+  it("acepta el importe como texto", () => {
+    const c = normalizarLeido({ nominal: "$ 1.234.567,89", fecha_pago: "2026-08-27" }, "a.jpg");
+    expect(c!.nominal).toBe(1_234_567.89);
+  });
+
+  it("descarta la fila que no trae ni importe ni fecha", () => {
+    expect(normalizarLeido({ banco: "Galicia" }, "a.jpg")).toBeNull();
+  });
+
+  it("deja en null lo que el modelo no pudo leer", () => {
+    const c = normalizarLeido({ nominal: 1000, fecha_pago: null, cuit_librador: null }, "a.jpg");
+    expect(c).toMatchObject({ fecha_pago: null, cuit_librador: null, banco: null });
   });
 });

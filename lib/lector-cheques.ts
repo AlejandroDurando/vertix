@@ -445,19 +445,161 @@ export async function leerCheques(archivo: ArchivoEntrada): Promise<LecturaResul
     }
   }
 
+  if (!leerConModeloDisponible()) {
+    return {
+      cheques: [],
+      via: "modelo",
+      motivo:
+        "Este archivo es una imagen o un PDF escaneado y la lectura automática no está configurada: cargalo a mano.",
+    };
+  }
+
+  const cheques = await leerConModelo(archivo);
   return {
-    cheques: [],
+    cheques,
     via: "modelo",
-    motivo: leerConModeloDisponible()
-      ? "No se pudo leer el archivo."
-      : "Este archivo es una imagen o un PDF escaneado: cargalo a mano por ahora.",
+    ...(cheques.length === 0
+      ? { motivo: "No se reconoció ningún cheque en el archivo. Cargalo a mano." }
+      : {}),
   };
 }
 
+// --- Camino 3: el modelo, para lo que no se puede leer localmente ---
+
 /**
- * Si está configurada la lectura de imágenes. Todavía no: es el paso 5 del
- * plan. Mientras tanto, una foto se carga a mano y la tabla lo dice.
+ * Si la lectura de imágenes está configurada. Sin la clave, el resto del
+ * circuito funciona igual y la tabla se carga a mano — mismo criterio que el
+ * bucket de adjuntos, que tampoco frena el formulario cuando falta.
  */
 export function leerConModeloDisponible(): boolean {
-  return false;
+  return Boolean(process.env.GEMINI_API_KEY);
+}
+
+const MODELO = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+/**
+ * Un cheque es un documento estandarizado, así que se le describe la estructura
+ * en vez de pedirle que interprete. Lo importante es la última regla: **un
+ * campo vacío es corregible, uno inventado es un error silencioso**, y el que
+ * cuesta plata es el importe.
+ */
+const INSTRUCCIONES = `Sos un lector de cheques, echeq y facturas de crédito electrónica de Argentina.
+Devolvé todos los valores que encuentres en el documento. Puede haber uno solo (la foto de un cheque)
+o muchos (un listado del banco).
+
+De cada valor:
+- nominal: el importe en números, como número sin separadores de miles.
+- nominal_en_letras: el importe escrito en palabras, convertido a número. Sólo si figura.
+- fecha_pago: la fecha de pago o vencimiento, en formato YYYY-MM-DD. NO la fecha de emisión.
+- cuit_librador: el CUIT de quien libra el cheque, 11 dígitos sin guiones.
+- banco: el nombre del banco girado.
+- numero: el número del cheque.
+
+Reglas:
+- Si un dato no está o no lo podés leer con seguridad, devolvé null. Nunca lo inventes ni lo completes
+  con lo que te parezca probable.
+- No devuelvas totales, subtotales ni renglones que no sean un valor individual.`;
+
+const ESQUEMA = {
+  type: "object",
+  properties: {
+    cheques: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          nominal: { type: "number", nullable: true },
+          nominal_en_letras: { type: "number", nullable: true },
+          fecha_pago: { type: "string", nullable: true },
+          cuit_librador: { type: "string", nullable: true },
+          banco: { type: "string", nullable: true },
+          numero: { type: "string", nullable: true },
+        },
+      },
+    },
+  },
+  required: ["cheques"],
+};
+
+export type ChequeCrudo = Partial<Record<keyof ChequeLeido, unknown>>;
+
+async function leerConModelo(archivo: ArchivoEntrada): Promise<ChequeLeido[]> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODELO}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: INSTRUCCIONES },
+            {
+              inline_data: {
+                mime_type: archivo.tipo || "image/jpeg",
+                data: Buffer.from(archivo.datos).toString("base64"),
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        // Lectura, no redacción: sin margen para elegir entre alternativas.
+        temperature: 0,
+        responseMimeType: "application/json",
+        responseSchema: ESQUEMA,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`El lector devolvió ${res.status}`);
+  }
+
+  const json = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  const texto = json.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!texto) return [];
+
+  let leidos: ChequeCrudo[];
+  try {
+    leidos = (JSON.parse(texto) as { cheques?: ChequeCrudo[] }).cheques ?? [];
+  } catch {
+    return [];
+  }
+
+  return leidos.map((c) => normalizarLeido(c, archivo.nombre)).filter((c) => c !== null);
+}
+
+/**
+ * Lo que devuelve el modelo se pasa por los mismos parseos que el resto: una
+ * fecha en otro formato o un CUIT con guiones se arreglan acá, y un CUIT que no
+ * cierra por dígito verificador se descarta en vez de viajar mal a la tabla.
+ */
+export function normalizarLeido(crudo: ChequeCrudo, origen: string): ChequeLeido | null {
+  const numeroDe = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v)
+      ? v
+      : typeof v === "string"
+        ? parsearImporte(v)
+        : null;
+  const textoDe = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+  const nominal = numeroDe(crudo.nominal);
+  const fecha = textoDe(crudo.fecha_pago);
+  const cuitCrudo = textoDe(crudo.cuit_librador);
+
+  const cheque: ChequeLeido = {
+    nominal,
+    fecha_pago: fecha ? parsearFecha(fecha) : null,
+    cuit_librador: cuitCrudo ? buscarCuit(cuitCrudo) : null,
+    banco: textoDe(crudo.banco),
+    numero: textoDe(crudo.numero)?.replace(/\D/g, "") || null,
+    nominal_en_letras: numeroDe(crudo.nominal_en_letras),
+    origen,
+  };
+
+  // Sin importe ni fecha no hay nada que revisar: es ruido del documento.
+  return cheque.nominal === null && cheque.fecha_pago === null ? null : cheque;
 }
