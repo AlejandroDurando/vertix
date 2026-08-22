@@ -166,6 +166,69 @@ export type CotizacionComprador = {
   diferencia_con_vendedor: number;
 };
 
+// --- Cotización en lote ---
+// El equipo recibe tandas de cheques de un mismo cliente y hoy los carga uno
+// por uno. El lote comparte todo lo que no cambia entre cheques (vendedor,
+// modalidad, instrumento) y sólo repite por fila lo propio de cada valor.
+
+/** Un cheque de la tanda, tal como queda en la tabla antes de cotizar. */
+export type FilaLote = {
+  /** Identificador que pone el navegador, para casar la fila con su resultado. */
+  id: string;
+  /** Valor nominal. En la FCE, el total de la factura. */
+  monto: number;
+  /** Sólo FCE: la parte que el comprador aceptó, que es lo que se negocia. */
+  monto_aceptado?: number;
+  fecha_pago: string; // YYYY-MM-DD
+  /** Quien firma el cheque: es a quien se le consulta el BCRA. */
+  cuit_librador?: string;
+  banco?: string;
+  /** Número de cheque, para detectar el mismo valor cargado dos veces. */
+  numero?: string;
+};
+
+export type LoteInput = {
+  modalidad: ModalidadCheque;
+  instrumento: InstrumentoCheque;
+  condicion_vendedor?: CondicionIva;
+  /** Quien vende la tanda. Uno solo para todo el lote. */
+  cuit_endosatario?: string;
+  filas: FilaLote[];
+};
+
+export type FilaCotizada = {
+  id: string;
+  banco?: string;
+  numero?: string;
+  cuit_librador?: string;
+  resultado: SimuladorChequesOutput;
+  /**
+   * Situación del librador en el BCRA, cuando la fila trae CUIT. A diferencia
+   * del simulador de a uno, acá **nunca** frena la cotización: marca la fila y
+   * el resto del lote se cotiza igual.
+   */
+  bcra?: BcraInfo;
+};
+
+export type TotalesLote = {
+  cantidad: number;
+  /** Suma de lo que se negocia: el nominal, o el aceptado en la FCE. */
+  nominal: number;
+  a_recibir: number;
+  descuento: number;
+  /** Descuento total como % de lo negociado. */
+  costo_total_pct: number;
+  /** Lo que desembolsa el comprador. Sólo en el mercado de capitales. */
+  a_pagar_comprador?: number;
+};
+
+export type LoteOutput = {
+  filas: FilaCotizada[];
+  totales: TotalesLote;
+  /** Situación del vendedor, si se cargó su CUIT. Sólo informativa. */
+  bcra_endosatario?: BcraInfo;
+};
+
 // --- Simulador: préstamos ---
 // La tasa final depende del solicitante y de condiciones de mercado (cauciones,
 // intereses bancarios), no del tipo de persona: el simulador muestra un RANGO

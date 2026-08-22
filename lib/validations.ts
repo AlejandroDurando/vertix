@@ -388,6 +388,119 @@ export function parseSimulador(
   return { success: false, message, field };
 }
 
+// --- Cotización en lote ---
+/**
+ * Tope de cheques por tanda. No es una regla del negocio: acota el trabajo de
+ * un request (una simulación y hasta una consulta al BCRA por fila) para que
+ * la lambda no se quede sin tiempo.
+ */
+export const MAX_FILAS_LOTE = 50;
+
+const filaLoteSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  monto: montoSchema,
+  monto_aceptado: montoSchema.optional(),
+  fecha_pago: fechaSchema,
+  // El CUIT del librador puede faltar: una captura de home banking a veces
+  // muestra sólo la razón social. Sin CUIT no hay consulta al BCRA, pero la
+  // fila se cotiza igual.
+  cuit_librador: cuitSchema.optional(),
+  banco: trimmed(120).optional(),
+  numero: trimmed(30).optional(),
+});
+
+export const loteSchema = z
+  .object({
+    modalidad: z.enum(["directo", "comitente"]),
+    instrumento: z.enum(["cheque", "echeq", "fce"]),
+    condicion_vendedor: z.enum(["ri", "mono_cf"]).optional(),
+    // Quien vende la tanda, uno solo para todo el lote. Opcional: no entra en
+    // el cálculo y pedirlo obligatorio frenaría una cotización rápida. Cuando
+    // viene se usa para el BCRA y para el control de cheques propios.
+    cuit_endosatario: cuitSchema.optional(),
+    concertacion: z.enum(["hoy", "manana"]).optional(),
+    filas: z
+      .array(filaLoteSchema)
+      .min(1, "Cargá al menos un cheque")
+      .max(MAX_FILAS_LOTE, `No se pueden cotizar más de ${MAX_FILAS_LOTE} cheques por vez`),
+  })
+  .superRefine((data, ctx) => {
+    if (instrumentoSoloDirecto(data.instrumento) && data.modalidad === "comitente") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modalidad"],
+        message: MSG_CHEQUE_SOLO_DIRECTO,
+      });
+      return;
+    }
+
+    if (instrumentoSoloComitente(data.instrumento) && data.modalidad === "directo") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["modalidad"],
+        message: MSG_FCE_SOLO_COMITENTE,
+      });
+      return;
+    }
+
+    const desde = fechaConcertacion(data.concertacion);
+
+    data.filas.forEach((fila, i) => {
+      if (data.instrumento === "fce") {
+        if (fila.monto_aceptado == null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["filas", i, "monto_aceptado"],
+            message: "Indicá el valor aceptado de la FCE.",
+          });
+        } else if (fila.monto_aceptado > fila.monto) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["filas", i, "monto_aceptado"],
+            message: "El valor aceptado no puede superar el total de la factura.",
+          });
+        }
+      }
+
+      if (
+        modalidadRequiereMinDias(data.modalidad) &&
+        !cumpleMinDiasHabiles(fila.fecha_pago, desde)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["filas", i, "fecha_pago"],
+          message: MSG_MIN_DIAS_COMITENTE,
+        });
+      }
+
+      // No se descuentan cheques propios: si el vendedor es el mismo que firmó
+      // el cheque, esa fila no es una operación.
+      if (
+        data.cuit_endosatario &&
+        fila.cuit_librador &&
+        normalizarCuit(fila.cuit_librador) === normalizarCuit(data.cuit_endosatario)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["filas", i, "cuit_librador"],
+          message:
+            "El librador y el endosatario no pueden coincidir: no se descuentan cheques propios.",
+        });
+      }
+    });
+  });
+
+export function parseLote(
+  body: unknown
+):
+  | { success: true; data: z.infer<typeof loteSchema> }
+  | { success: false; message: string; field?: string } {
+  const parsed = loteSchema.safeParse(body);
+  if (parsed.success) return { success: true, data: parsed.data };
+  const { message, field } = firstZodError(parsed.error);
+  return { success: false, message, field };
+}
+
 // --- Alta de cuenta comitente (AdCap / Sailing) ---
 const requerido = (max = 160) => z.string().trim().min(1, "Campo obligatorio").max(max);
 const dniSchema = z.string().trim().regex(/^\d{7,8}$/, "DNI inválido (7 u 8 dígitos)");
