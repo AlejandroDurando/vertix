@@ -121,12 +121,21 @@ describe("fecha de concertación", () => {
     expect(esDiaHabil(fechaConcertacion("manana", viernes))).toBe(true);
   });
 
+  // Con fecha fija: si se midiera contra el día real, un sábado los dos pisos
+  // caerían en el mismo lunes y la diferencia que se quiere probar no existiría.
   it("corre el piso de días hábiles junto con la concertación", () => {
-    // El vencimiento más cercano que se puede tomar hoy: desde mañana ya no llega.
+    const miercoles = new Date(2026, 7, 19);
+    expect(toISODate(fechaPagoMinima(miercoles))).toBe("2026-08-25");
+    expect(toISODate(fechaPagoMinima(fechaConcertacion("manana", miercoles)))).toBe(
+      "2026-08-26"
+    );
+  });
+
+  it("acepta el vencimiento más cercano que se puede tomar hoy", () => {
     const justo = toISODate(fechaPagoMinima(hoy()));
-    const base = { instrumento: "echeq", modalidad: "comitente", fecha_pago: justo };
-    expect(simulador(base).success).toBe(true);
-    expect(simulador({ ...base, concertacion: "manana" }).success).toBe(false);
+    expect(
+      simulador({ instrumento: "echeq", modalidad: "comitente", fecha_pago: justo }).success
+    ).toBe(true);
   });
 });
 

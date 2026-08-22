@@ -20,7 +20,10 @@ const MINIMO_PARA_COMPRIMIR = 300 * 1024;
 /** Tope del envío completo. Vercel corta en 4,5MB; se deja margen para los campos. */
 export const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
 
-const COMPRIMIBLES = ["image/jpeg", "image/png", "image/webp"];
+// El HEIC entra porque es lo que sale de un iPhone. Safari lo decodifica y
+// queda en JPEG; en los navegadores que no pueden, `comprimirImagen` devuelve
+// el original y sigue de largo.
+const COMPRIMIBLES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 
 export function formatearBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

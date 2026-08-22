@@ -38,6 +38,7 @@ export const TIPOS_LECTURA = [
   "image/png",
   "image/webp",
   "image/heic",
+  "image/heif",
   "text/csv",
   "text/plain",
   "application/vnd.ms-excel",
