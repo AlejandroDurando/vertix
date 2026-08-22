@@ -4,7 +4,8 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { NumberInput, Select } from "@/components/ui/Field";
-import { postJson } from "@/lib/api-client";
+import { postForm, postJson } from "@/lib/api-client";
+import { comprimirImagen } from "@/lib/adjuntos-client";
 import { toISODate } from "@/lib/fechas";
 import {
   MAX_FILAS_LOTE,
@@ -18,12 +19,20 @@ import {
   valorAceptadoSugerido,
   type Concertacion,
 } from "@/lib/validations";
+import type { ChequeLeido, LecturaResultado } from "@/lib/lector-cheques";
 import type {
   BcraInfo,
   InstrumentoCheque,
   LoteOutput,
   ModalidadCheque,
 } from "@/types";
+
+/** Estado de cada archivo mientras se lee. */
+type Lectura = {
+  nombre: string;
+  estado: "leyendo" | "listo" | "vacio" | "error";
+  detalle?: string;
+};
 
 const INSTRUMENTO = [
   { value: "cheque", label: "Cheque" },
@@ -100,6 +109,8 @@ export function LoteForm() {
   const [campoError, setCampoError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<LoteOutput | null>(null);
   const [copiado, setCopiado] = useState(false);
+  const [lecturas, setLecturas] = useState<Lectura[]>([]);
+  const [arrastrando, setArrastrando] = useState(false);
 
   // El contador arranca en 3 porque las tres filas iniciales ya tomaron f1..f3.
   if (contador.current === 0) contador.current = 3;
@@ -149,6 +160,62 @@ export function LoteForm() {
     );
   const quitar = (id: string) =>
     setFilas((prev) => (prev.length <= 1 ? prev : prev.filter((f) => f.id !== id)));
+
+  /**
+   * Lee los archivos de a uno y va agregando las filas a medida que llegan.
+   * De a uno y no todos juntos porque cada request tiene que quedar lejos del
+   * límite de body de Vercel, y porque así la tabla se llena a la vista.
+   */
+  async function leerArchivos(archivos: File[]) {
+    for (const original of archivos) {
+      setLecturas((prev) => [...prev, { nombre: original.name, estado: "leyendo" }]);
+
+      const archivo = await comprimirImagen(original);
+      const form = new FormData();
+      form.append("archivo", archivo);
+      const res = await postForm<LecturaResultado>("/api/lote/leer", form);
+
+      const marcar = (estado: Lectura["estado"], detalle?: string) =>
+        setLecturas((prev) =>
+          prev.map((l, i) =>
+            i === prev.length - 1 && l.nombre === original.name
+              ? { ...l, estado, detalle }
+              : l
+          )
+        );
+
+      if (!res.success) {
+        marcar("error", res.error);
+        continue;
+      }
+      if (res.data.cheques.length === 0) {
+        marcar("vacio", res.data.motivo);
+        continue;
+      }
+      agregarLeidos(res.data.cheques);
+      marcar(
+        "listo",
+        `${res.data.cheques.length} ${res.data.cheques.length === 1 ? "cheque" : "cheques"}`
+      );
+    }
+  }
+
+  /** Las filas leídas se suman a la tabla; las vacías que sobran se descartan. */
+  function agregarLeidos(leidos: ChequeLeido[]) {
+    setFilas((prev) => {
+      const cargadas = prev.filter((f) => f.monto || f.fecha_pago || f.cuit_librador);
+      const nuevas = leidos.map((c) => ({
+        id: nuevoId(),
+        monto: c.nominal != null ? String(c.nominal) : "",
+        monto_aceptado: "",
+        fecha_pago: c.fecha_pago ?? "",
+        cuit_librador: c.cuit_librador ?? "",
+        banco: c.banco ?? "",
+        numero: c.numero ?? "",
+      }));
+      return [...cargadas, ...nuevas];
+    });
+  }
 
   /** `filas.2.fecha_pago` → resalta esa celda y nada más. */
   const celdaMal = (indice: number, campo: string) =>
@@ -296,6 +363,68 @@ export function LoteForm() {
             onChange={(e) => setCuitEndosatario(e.target.value)}
           />
         </div>
+      </section>
+
+      <section>
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setArrastrando(true);
+          }}
+          onDragLeave={() => setArrastrando(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setArrastrando(false);
+            void leerArchivos(Array.from(e.dataTransfer.files));
+          }}
+          className={`rounded-xl border-2 border-dashed p-6 text-center transition ${
+            arrastrando ? "border-vertix bg-vertix/5" : "border-vertix/20"
+          }`}
+        >
+          <p className="text-sm font-medium text-vertix">
+            Arrastrá acá los cheques, o el listado que bajaste del banco
+          </p>
+          <p className="mt-1 text-xs text-vertix/50">
+            PDF, imagen, CSV o Excel. Los archivos se leen y se descartan: no se guardan.
+          </p>
+          <label className="mt-3 inline-block cursor-pointer rounded-md border border-vertix/20 px-3 py-1.5 text-sm font-medium text-vertix transition hover:bg-vertix/5">
+            Elegir archivos
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.csv,.xlsx,image/*"
+              className="hidden"
+              onChange={(e) => {
+                void leerArchivos(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+
+        {lecturas.length > 0 && (
+          <ul className="mt-3 space-y-1 text-xs">
+            {lecturas.map((l, i) => (
+              <li key={`${l.nombre}-${i}`} className="flex items-center gap-2 text-vertix/70">
+                <span
+                  className={
+                    l.estado === "listo"
+                      ? "text-emerald-600"
+                      : l.estado === "error"
+                        ? "text-red-600"
+                        : l.estado === "vacio"
+                          ? "text-amber-600"
+                          : "text-vertix/40"
+                  }
+                >
+                  {l.estado === "listo" ? "✓" : l.estado === "leyendo" ? "…" : "!"}
+                </span>
+                <span className="font-medium">{l.nombre}</span>
+                {l.detalle && <span className="text-vertix/50">— {l.detalle}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>
