@@ -411,9 +411,9 @@ verificación). Borrarlas cuando ya no sirvan.
 ## Pendientes técnicos
 
 1. ~~**Adjuntos sin almacenamiento durable**~~ — **resuelto**: el bucket R2 `vertix-legajos` está
-   creado y funcionando (ver tabla de integraciones). Falta confirmar que las variables `S3_*` estén
-   cargadas también en **Vercel**, no sólo en `.env.local`: si en producción faltaran, los envíos
-   reales volverían a viajar por email sin dejar copia.
+   creado y funcionando (ver tabla de integraciones), y las variables `S3_*` **están cargadas también
+   en Vercel** (verificado el 22/08/2026 comparando el Access Key ID con el que firma en producción).
+   El token de R2 se roteó ese mismo día y las dos puntas quedaron actualizadas.
    ⚠️ **Google Drive no sirve como destino**: la service account tiene quota 0 y `files.create` falla
    con "Service Accounts do not have storage quota"; requeriría unidad compartida (sólo con Google
    Workspace — el MX de `vertix.com.ar` apunta a Hostmar, así que hoy no lo tienen) o delegación OAuth.
