@@ -161,6 +161,12 @@ que en el ejemplo quedaba $783.455 por debajo del total real (un 7%, y $65.288 p
 manda: arma el desplegable de los dos formularios (`PLAZO_OPCIONES`) y valida el body, así que un
 plazo que no esté en la lista se rechaza. Antes era un campo libre de 1 a 120.
 
+**Los seguros, los gastos de otorgamiento y la grilla de tasa por plazo quedan afuera, confirmado**
+(21/08/2026): los seguros y los gastos "no se vienen cobrando, quizás en un futuro se empiecen a
+cobrar nuevamente"; sobre la grilla mensual del Excel, "no, dejalo como lo pusiste" — sigue rigiendo
+el rango `prestamos_ph`–`prestamos_pj`. El plazo de 6 meses "cotiza con esa tasa por el momento",
+o sea con el mismo rango que los demás.
+
 En la planilla del cliente hay tres cosas cargadas que **no** entran en la cuota y por eso no se
 implementaron: el seguro de vida (0,1% para persona física) y el seguro del bien están en cero y sin
 fórmula en el cuadro, el "premio anual del seguro del bien a prendar" ($81.861) no lo referencia
@@ -250,7 +256,9 @@ boleto 348.884).
 
 El **`arancel_minimo`** (500) es un piso en pesos que cobra la ALyC si el cálculo da menos; sólo
 aplica en el mercado, donde el arancel se prorratea ("es por sistema", cliente 13/08/2026: el
-arancel de Vertix fuera del mercado no tiene piso).
+arancel de Vertix fuera del mercado no tiene piso). Re-confirmado el 21/08/2026 ("si es menor a 500
+piso de 500"): la regla de la planilla de cobrar 0 cuando el cálculo no llega a $100 **no** es la
+que rige.
 
 **El esquema de afuera del mercado lo confirmó Martín** (13/08/2026) y la planilla lo reproduce al
 peso: "los gastos bancarios se calculan sobre el valor nominal del cheque, el descuento también,
@@ -280,17 +288,20 @@ calculando separado, y el simulador interno muestra el desglose a partir de `tna
 `arancel`. Fuera del mercado no hay tasa global: el arancel es una comisión fija sobre el capital,
 así que se informa sólo la tasa de descuento y los gastos van en el detalle, en pesos.
 
-**La percepción de IVA se cotiza siempre en el simulador público.** Depende de la condición del
-**comprador**, que lo consigue Vertix y no se conoce al simular, así que se muestra el peor caso
-(Responsable Inscripto) y se saca en la cotización real si es monotributista o consumidor final.
-Con `?interno=1` el simulador muestra un selector para elegir esa condición — es sólo un parámetro
-en la URL, sin login: no expone nada que no se pueda deducir cotizando.
+**La percepción de IVA se le cobra al vendedor y depende de SU condición frente al IVA**
+(cliente, 21/08/2026: "se la cobran al vendedor"; la planilla la descuenta del vendedor con la nota
+"si es mono, no paga"). Antes el código la ataba a la condición del **comprador**, que era una
+suposición. Como el vendedor es justamente quien está simulando, el campo `condicion_vendedor` se
+pregunta en el simulador **público**, no sólo en el interno: es un dato que la persona conoce. Por
+defecto se cotiza "ri", el peor caso.
 
 **El simulador interno muestra también lo que paga el comprador.** La planilla *compra CPD PESOS*
 tiene dos bloques rotulados COMPRADOR y VENDEDOR; hasta ahora sólo se calculaba el del vendedor. El
 del comprador es el valor presente más **sus** derechos de mercado —que son **0,03%, la mitad que los
-del vendedor** (`derechos_comprador`)— y el arancel de la ALyC (`arancel_comprador`, hoy en 0 porque
-esa celda está vacía en la planilla), cada uno con su IVA. Sirve para decirle a un inversor externo
+del vendedor** (`derechos_comprador`)— y el arancel de la ALyC (`arancel_comprador`, hoy en 0
+porque **hay un acuerdo con los compradores habituales**; el cliente avisó el 21/08/2026 que al
+sumar compradores nuevos va a empezar a cobrarse, con su IVA — por eso es una fila editable de la
+hoja y no un cero hardcodeado), cada uno con su IVA. Sirve para decirle a un inversor externo
 cuánto tiene que poner, y para saber cuánto pone Vertix cuando compra con fondos propios (pedido del
 cliente, 19/08/2026). `costosComprador()` en `lib/simulador.ts`; se devuelve en `comprador` y el
 simulador lo muestra sólo con `?interno=1`. **Sólo existe en el mercado de capitales**: fuera de él
@@ -374,25 +385,9 @@ verificación). Borrarlas cuando ya no sirvan.
 
 ## Falta información / a confirmar
 
-Preguntas abiertas al cliente, esperando respuesta (al 20/08/2026). Las respuestas llegan por
-WhatsApp vía Carolina; las de tasas y mecánica las contesta Martín.
-
-**Del cuadro de cotización de cheques:**
-1. **La percepción de IVA, ¿depende del vendedor o del comprador?** En la planilla está descontada
-   del **vendedor**, con la nota "si es mono, no paga"; el código la ata a la condición del
-   **comprador** (`condicion_comprador`). Son $26.026 en la fila 7 de la planilla.
-2. **El arancel, ¿piso de $500 o nada si da menos de $100?** La planilla cobra 0 cuando el cálculo
-   no llega a $100; el código aplica `arancel_minimo` = 500 como piso. Las dos reglas se contradicen.
-3. **¿El arancel de la ALyC al comprador es siempre 0?** La celda de esa tasa está vacía en la
-   planilla, así que `arancel_comprador` quedó en 0.
-
-**De los préstamos y prendas** (planilla "Cuadro Cálculo Cuota Ramirez"):
-4. **¿La grilla de tasa mensual por plazo (12 → 5%, 18 → 5,5%, 24 → 6%) reemplaza al rango
-   `prestamos_ph`–`prestamos_pj` (72–82%)?** Esa operación se cotizó con TNA 82, no con la grilla.
-5. **¿Los seguros y los gastos de otorgamiento se cobran?** En la planilla están en cero y sin
-   fórmula, y el premio anual del seguro del bien ($81.861) no lo referencia ninguna celda.
-6. **Con 6 meses ya habilitado, ¿qué tasa le corresponde?** La grilla del Excel arranca en 12.
+Las seis preguntas del cuadro de cheques y de la prenda quedaron **respondidas el 21/08/2026** y
+están reflejadas arriba, cada una en su sección.
 
 **De Sailing** (pendiente desde el 31/07/2026, el cliente dijo que pasaría el detalle "en breve"):
-7. ¿CBU y Nota EPYME obligatorios? ¿Co-titularidad?
-8. ¿La DDJJ de actividad lícita también se pide a personas jurídicas? (en PF ya se pide como adjunto)
+1. ¿CBU y Nota EPYME obligatorios? ¿Co-titularidad?
+2. ¿La DDJJ de actividad lícita también se pide a personas jurídicas? (en PF ya se pide como adjunto)

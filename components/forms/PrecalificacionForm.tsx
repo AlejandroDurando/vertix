@@ -410,11 +410,18 @@ export function PrecalificacionForm() {
           </Alert>
         )}
         {success && preAprobado ? (
-          <Alert tone="success" title="¡PRE APROBADO!">
-            Tu solicitud pasó la verificación crediticia en el BCRA. Queda sujeta a
-            la revisión de la documentación y al análisis final, pero ya podemos
-            avanzar: te contactamos a la brevedad para cerrar los detalles.
-          </Alert>
+          // Cartel propio en vez de un Alert: el cliente pidió el "PRE APROBADO"
+          // en letra grande, y el título del Alert es del tamaño del resto.
+          <div className="rounded-xl border-2 border-green-600/30 bg-green-50 p-6 text-center">
+            <p className="text-3xl font-bold tracking-tight text-green-700 md:text-4xl">
+              ¡PRE APROBADO!
+            </p>
+            <p className="mx-auto mt-3 max-w-lg text-sm text-green-900/80">
+              Tu solicitud pasó la verificación crediticia en el BCRA. Queda sujeta a
+              la revisión de la documentación y al análisis final, pero ya podemos
+              avanzar: te contactamos a la brevedad para cerrar los detalles.
+            </p>
+          </div>
         ) : (
           success && (
             <Alert tone="success" title="Solicitud recibida">

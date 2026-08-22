@@ -283,9 +283,9 @@ export const simuladorChequesSchema = z
     instrumento: z.enum(["cheque", "echeq", "fce"]),
     cuit_librador: cuitSchema,
     cuit_endosatario: cuitSchema,
-    // Sólo llega desde el simulador interno; desde la web se cotiza el peor
-    // caso ("ri", el default) porque el comprador todavía no está definido.
-    condicion_comprador: z.enum(["ri", "mono_cf"]).optional(),
+    // Condición del vendedor frente al IVA: define si paga la percepción.
+    // Si no viene se cotiza el peor caso ("ri").
+    condicion_vendedor: z.enum(["ri", "mono_cf"]).optional(),
     // También sólo del simulador interno: cotizar como si la operación se
     // concertara mañana. Desde la web siempre es hoy.
     concertacion: z.enum(["hoy", "manana"]).optional(),

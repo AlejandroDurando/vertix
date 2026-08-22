@@ -40,7 +40,7 @@ const INSTRUMENTO = [
   { value: "echeq", label: "Echeq" },
   { value: "fce", label: "FCE (Factura de Crédito Electrónica)" },
 ];
-const CONDICION_COMPRADOR = [
+const CONDICION_VENDEDOR = [
   { value: "ri", label: "Responsable Inscripto" },
   { value: "mono_cf", label: "Monotributista o consumidor final" },
 ];
@@ -111,9 +111,6 @@ export function SimuladorForm() {
   const [aceptado, setAceptado] = useState("");
   const [aceptadoEditado, setAceptadoEditado] = useState(false);
 
-  // Quien simula desde la web no sabe quién va a comprar el cheque —lo consigue
-  // Vertix—, así que la percepción de IVA se cotiza siempre. Con ?interno=1 el
-  // equipo puede elegir la condición del comprador y ver el número final.
   useEffect(() => {
     setInterno(leerInterno());
   }, []);
@@ -173,12 +170,10 @@ export function SimuladorForm() {
         instrumento: String(raw.instrumento ?? ""),
         cuit_librador: String(raw.cuit_librador ?? ""),
         cuit_endosatario: String(raw.cuit_endosatario ?? ""),
-        ...(interno
-          ? {
-              condicion_comprador: String(raw.condicion_comprador ?? "ri"),
-              concertacion,
-            }
+        ...(raw.condicion_vendedor
+          ? { condicion_vendedor: String(raw.condicion_vendedor) }
           : {}),
+        ...(interno ? { concertacion } : {}),
       };
       const res = await postJson<ChequesResult>("/api/simulador", payload);
       setSubmitting(false);
@@ -213,9 +208,9 @@ export function SimuladorForm() {
           sus controles sólo aparecen en algunas combinaciones. */}
       {interno && (
         <div className="rounded-lg border border-vertix/20 bg-vertix/5 px-4 py-3 text-sm text-vertix">
-          <strong>Modo interno.</strong> Podés elegir la fecha de concertación y
-          la condición del comprador, y el resultado muestra el desglose de la
-          tasa. Para volver a la vista pública, abrí la misma dirección con{" "}
+          <strong>Modo interno.</strong> Podés elegir la fecha de concertación, y
+          el resultado muestra el desglose de la tasa y lo que paga el comprador.
+          Para volver a la vista pública, abrí la misma dirección con{" "}
           <code className="font-mono">?interno=0</code>.
         </div>
       )}
@@ -346,14 +341,14 @@ export function SimuladorForm() {
                   error={fe("concertacion")}
                 />
               )}
-              {interno && modalidadEfectiva === "comitente" && (
+              {modalidadEfectiva === "comitente" && (
                 <Select
-                  name="condicion_comprador"
-                  label="Condición del comprador frente al IVA"
-                  options={CONDICION_COMPRADOR}
+                  name="condicion_vendedor"
+                  label="Tu condición frente al IVA"
+                  options={CONDICION_VENDEDOR}
                   defaultValue="ri"
-                  hint="Sólo visible en el simulador interno. El monotributista y el consumidor final no pagan la percepción."
-                  error={fe("condicion_comprador")}
+                  hint="La percepción de IVA se le cobra a quien vende: el monotributista y el consumidor final no la pagan."
+                  error={fe("condicion_vendedor")}
                 />
               )}
             </>
@@ -555,9 +550,9 @@ function ChequesResultCard({
 
       {data.incluye_percepcion && (
         <p className="mt-3 text-xs text-vertix/60">
-          Incluye la percepción de IVA, que se cobra cuando el comprador es
-          Responsable Inscripto. Si el comprador resulta monotributista o consumidor
-          final, no se cobra y el monto a recibir es mayor.
+          Incluye la percepción de IVA, que se le cobra a quien vende el cheque
+          cuando es Responsable Inscripto. Al monotributista y al consumidor final
+          no se les cobra, y el monto a recibir es mayor.
         </p>
       )}
       {data.bcra && (

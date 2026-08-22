@@ -86,10 +86,10 @@ export type Tasas = {
 
 // --- Simulador: cheques ---
 /**
- * Condición del comprador frente al IVA. Define si se cobra la percepción: el
- * monotributista y el consumidor final no la pagan. Quien simula desde la web
- * no sabe quién va a comprar (lo consigue Vertix), así que se cotiza el peor
- * caso — "ri" — y se ajusta en la cotización real.
+ * Condición frente al IVA de quien vende el cheque. Define si se le cobra la
+ * percepción: el monotributista y el consumidor final no la pagan (cliente,
+ * 21/08/2026: "se la cobran al vendedor"). Es un dato que quien simula conoce,
+ * porque es el suyo; por las dudas se cotiza "ri" —el peor caso— por defecto.
  */
 export type CondicionIva = "ri" | "mono_cf";
 
@@ -104,7 +104,7 @@ export type SimuladorChequesInput = {
   fecha_pago: string; // YYYY-MM-DD
   modalidad: ModalidadCheque;
   instrumento: InstrumentoCheque;
-  condicion_comprador?: CondicionIva;
+  condicion_vendedor?: CondicionIva;
 };
 
 export type BcraEstado = "ok" | "analisis" | "riesgo" | "no_verificado";

@@ -195,13 +195,13 @@ describe("simularCheques", () => {
     expect(r.descuento_total).toBeCloseTo(12_635.47, 2);
   });
 
-  it("el comprador monotributista o consumidor final no paga la percepción", () => {
+  it("el vendedor monotributista o consumidor final no paga la percepción", () => {
     const r = simularCheques(
       {
         ...input,
         modalidad: "comitente",
         instrumento: "echeq",
-        condicion_comprador: "mono_cf",
+        condicion_vendedor: "mono_cf",
       },
       TASAS,
       ahora

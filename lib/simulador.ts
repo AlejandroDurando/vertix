@@ -202,7 +202,7 @@ function calcularCostos(opts: {
   arancelPct: number;
   modalidad: ModalidadCheque;
   instrumento: InstrumentoCheque;
-  condicionComprador: CondicionIva;
+  condicionVendedor: CondicionIva;
   tasas: Tasas;
 }): { costos: CostoSimulador[]; incluyePercepcion: boolean } {
   const { monto, dias, tnaInteres, arancelPct, modalidad, instrumento, tasas } = opts;
@@ -271,7 +271,7 @@ function calcularCostos(opts: {
     }
   );
 
-  if (!esFce && opts.condicionComprador === "ri") {
+  if (!esFce && opts.condicionVendedor === "ri") {
     costos.push({
       concepto: "Percepción de IVA",
       monto: interes * (iva / 100),
@@ -282,7 +282,7 @@ function calcularCostos(opts: {
   return {
     // El interés siempre se muestra; el resto sólo si tiene importe.
     costos: costos.filter((c, i) => i === 0 || c.monto > 0),
-    incluyePercepcion: !esFce && opts.condicionComprador === "ri",
+    incluyePercepcion: !esFce && opts.condicionVendedor === "ri",
   };
 }
 
@@ -399,7 +399,7 @@ export function simularCheques(
     arancelPct,
     modalidad: input.modalidad,
     instrumento: input.instrumento,
-    condicionComprador: input.condicion_comprador ?? "ri",
+    condicionVendedor: input.condicion_vendedor ?? "ri",
     tasas,
   });
 
